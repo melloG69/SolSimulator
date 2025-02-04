@@ -1,28 +1,38 @@
 import { useState, useCallback } from "react";
-import { connection, wallet } from "@/lib/solana";
+import { connection } from "@/lib/solana";
 import { Transaction, TransactionInstruction, PublicKey, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
 const BundleBuilder = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { publicKey, signTransaction, connected } = useWallet();
 
   const addTransaction = useCallback(async () => {
+    if (!publicKey) {
+      toast({
+        title: "Error",
+        description: "Please connect your wallet first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      // Create a simple transfer transaction as an example
       const newTransaction = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitLimit({
           units: 200_000,
         })
       );
       
-      // Add required recent blockhash
       newTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      newTransaction.feePayer = wallet.publicKey;
+      newTransaction.feePayer = publicKey;
       
       setTransactions(prev => [...prev, newTransaction]);
       
@@ -38,26 +48,31 @@ const BundleBuilder = () => {
         variant: "destructive",
       });
     }
-  }, [toast]);
+  }, [toast, publicKey]);
 
   const simulateBundle = async () => {
+    if (!publicKey) {
+      toast({
+        title: "Error",
+        description: "Please connect your wallet first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const bundleId = crypto.randomUUID();
       
-      // Create bundle entry in Supabase
       await supabase.from('transaction_bundles').insert({
         id: bundleId,
-        wallet_address: wallet.publicKey.toString(),
+        wallet_address: publicKey.toString(),
         status: 'pending'
       });
 
-      // Simulate each transaction in the bundle
       for (const tx of transactions) {
         const simulation = await connection.simulateTransaction(tx);
-        console.log("Simulation result:", simulation);
         
-        // Serialize the simulation result before storing
         const serializedSimulation = {
           err: simulation.value.err,
           logs: simulation.value.logs,
@@ -65,7 +80,6 @@ const BundleBuilder = () => {
           accounts: simulation.value.accounts?.map(acc => acc?.toString()),
         };
         
-        // Update simulation results in Supabase
         await supabase.from('transaction_bundles').update({
           simulation_result: serializedSimulation,
           status: 'simulated'
@@ -88,22 +102,26 @@ const BundleBuilder = () => {
   };
 
   const executeBundle = async () => {
+    if (!publicKey || !signTransaction) {
+      toast({
+        title: "Error",
+        description: "Please connect your wallet first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      // Sign and convert to versioned transactions
       const signedTransactions = await Promise.all(
         transactions.map(async (tx) => {
-          tx.sign(wallet);
-          const serializedMessage = tx.serialize();
-          return VersionedTransaction.deserialize(serializedMessage);
+          const signed = await signTransaction(tx);
+          return VersionedTransaction.deserialize(signed.serialize());
         })
       );
 
-      // Execute bundle
       console.log("Executing bundle...");
       
-      // Here we would integrate with Jito's bundle service
-      // For now, we'll execute transactions sequentially
       for (const tx of signedTransactions) {
         const signature = await connection.sendTransaction(tx);
         console.log("Transaction signature:", signature);
@@ -127,13 +145,18 @@ const BundleBuilder = () => {
   return (
     <div className="container mx-auto p-4">
       <div className="bg-card rounded-lg p-6 shadow-lg">
-        <h1 className="text-2xl font-mono text-primary mb-6">Jito Bundle Guardrail</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-mono text-primary">Jito Bundle Guardrail</h1>
+          <WalletMultiButton />
+        </div>
         
         <div className="space-y-4">
-          <div className="bg-black/50 p-4 rounded-md">
-            <h2 className="text-secondary font-mono mb-2">Connected Wallet</h2>
-            <p className="font-mono text-sm text-white/70">{wallet.publicKey.toString()}</p>
-          </div>
+          {connected && publicKey && (
+            <div className="bg-black/50 p-4 rounded-md">
+              <h2 className="text-secondary font-mono mb-2">Connected Wallet</h2>
+              <p className="font-mono text-sm text-white/70">{publicKey.toString()}</p>
+            </div>
+          )}
 
           <div className="bg-black/50 p-4 rounded-md">
             <h2 className="text-secondary font-mono mb-2">Transaction Bundle</h2>
@@ -147,7 +170,7 @@ const BundleBuilder = () => {
                 onClick={addTransaction}
                 variant="outline"
                 className="w-full mt-2"
-                disabled={loading}
+                disabled={loading || !connected}
               >
                 Add Transaction
               </Button>
@@ -157,7 +180,7 @@ const BundleBuilder = () => {
           <div className="flex space-x-4">
             <Button
               onClick={simulateBundle}
-              disabled={loading || transactions.length === 0}
+              disabled={loading || transactions.length === 0 || !connected}
               className="flex-1"
               variant="secondary"
             >
@@ -168,7 +191,7 @@ const BundleBuilder = () => {
             </Button>
             <Button
               onClick={executeBundle}
-              disabled={loading || transactions.length === 0}
+              disabled={loading || transactions.length === 0 || !connected}
               className="flex-1"
               variant="default"
             >
