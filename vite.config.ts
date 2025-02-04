@@ -19,4 +19,16 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    'process.env': {},
+    'process.env.BROWSER': true,
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: 'esnext',
+      define: {
+        global: 'globalThis',
+      },
+    },
+  },
 }));
