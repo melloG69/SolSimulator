@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { connection } from "@/lib/solana";
-import { Transaction, TransactionInstruction, PublicKey, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
+import { Transaction, PublicKey, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -13,23 +13,6 @@ const BundleBuilder = () => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { publicKey, signTransaction, connected } = useWallet();
-
-  // Check Supabase session on component mount
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session) {
-        console.error("Supabase auth error:", error);
-        toast({
-          title: "Authentication Error",
-          description: "Please ensure you're logged in to access this feature",
-          variant: "destructive",
-        });
-      }
-    };
-
-    checkSession();
-  }, [toast]);
 
   const addTransaction = useCallback(async () => {
     if (!publicKey) {
@@ -79,11 +62,6 @@ const BundleBuilder = () => {
 
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("No active session");
-      }
-
       const bundleId = crypto.randomUUID();
       
       const { error: insertError } = await supabase.from('transaction_bundles').insert({
@@ -143,11 +121,6 @@ const BundleBuilder = () => {
 
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("No active session");
-      }
-
       const signedTransactions = await Promise.all(
         transactions.map(async (tx) => {
           const signed = await signTransaction(tx);
