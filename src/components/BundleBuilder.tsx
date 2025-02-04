@@ -19,7 +19,13 @@ const BundleBuilder = () => {
   const { publicKey, signTransaction, connected } = useWallet();
 
   const setWalletContext = async (walletAddress: string) => {
-    await supabase.rpc('set_wallet_context', { wallet: walletAddress });
+    try {
+      const { error } = await supabase.rpc('set_wallet_context', { wallet: walletAddress });
+      if (error) throw error;
+    } catch (error) {
+      console.error("Error setting wallet context:", error);
+      throw error;
+    }
   };
 
   // Demo function to simulate malicious transaction
@@ -109,6 +115,7 @@ const BundleBuilder = () => {
 
     setLoading(true);
     try {
+      // Set wallet context before any database operations
       await setWalletContext(publicKey.toString());
       const bundleId = crypto.randomUUID();
       
@@ -119,6 +126,7 @@ const BundleBuilder = () => {
       });
 
       if (insertError) {
+        console.error("Insert error:", insertError);
         throw new Error(`Failed to insert bundle: ${insertError.message}`);
       }
 
@@ -133,6 +141,7 @@ const BundleBuilder = () => {
         }).eq('id', bundleId);
 
         if (updateError) {
+          console.error("Update error:", updateError);
           throw new Error(`Failed to update simulation result: ${updateError.message}`);
         }
 
@@ -151,6 +160,7 @@ const BundleBuilder = () => {
       }).eq('id', bundleId);
 
       if (updateError) {
+        console.error("Update error:", updateError);
         throw new Error(`Failed to update simulation result: ${updateError.message}`);
       }
 
