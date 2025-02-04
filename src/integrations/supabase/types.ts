@@ -41,7 +41,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      set_wallet_context: {
+        Args: {
+          wallet: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       transaction_status: "pending" | "simulated" | "executed" | "failed"

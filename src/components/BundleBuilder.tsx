@@ -14,6 +14,10 @@ const BundleBuilder = () => {
   const { toast } = useToast();
   const { publicKey, signTransaction, connected } = useWallet();
 
+  const setWalletContext = async (walletAddress: string) => {
+    await supabase.rpc('set_wallet_context', { wallet: walletAddress });
+  };
+
   const addTransaction = useCallback(async () => {
     if (!publicKey) {
       toast({
@@ -62,6 +66,7 @@ const BundleBuilder = () => {
 
     setLoading(true);
     try {
+      await setWalletContext(publicKey.toString());
       const bundleId = crypto.randomUUID();
       
       const { error: insertError } = await supabase.from('transaction_bundles').insert({
@@ -121,6 +126,7 @@ const BundleBuilder = () => {
 
     setLoading(true);
     try {
+      await setWalletContext(publicKey.toString());
       const signedTransactions = await Promise.all(
         transactions.map(async (tx) => {
           const signed = await signTransaction(tx);
