@@ -3,12 +3,17 @@ import { connection } from "@/lib/solana";
 
 // Dynamic import for Jito SDK to handle ESM/CJS compatibility
 const getJitoSDK = async () => {
-  const jitoSDK = await import('@jito-foundation/sdk');
-  return {
-    Bundle: jitoSDK.Bundle,
-    SearcherClient: jitoSDK.SearcherClient,
-    TipAccountVersion: jitoSDK.TipAccountVersion,
-  };
+  try {
+    const jitoSDK = await import('@jito-foundation/sdk');
+    return {
+      Bundle: jitoSDK.Bundle,
+      SearcherClient: jitoSDK.SearcherClient,
+      TipAccountVersion: jitoSDK.TipAccountVersion,
+    };
+  } catch (error) {
+    console.error("Error importing Jito SDK:", error);
+    throw error;
+  }
 };
 
 class JitoService {
@@ -21,9 +26,13 @@ class JitoService {
   }
 
   private async initializeClient() {
-    const { SearcherClient } = await getJitoSDK();
-    // Initialize with Jito devnet endpoint for testing
-    this.searcherClient = new SearcherClient("https://api.devnet.jito.wtf");
+    try {
+      const { SearcherClient } = await getJitoSDK();
+      // Initialize with Jito devnet endpoint for testing
+      this.searcherClient = new SearcherClient("https://api.devnet.jito.wtf");
+    } catch (error) {
+      console.error("Error initializing Jito client:", error);
+    }
   }
 
   async validateTransactions(transactions: Transaction[]): Promise<boolean> {

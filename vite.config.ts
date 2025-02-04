@@ -43,9 +43,7 @@ export default defineConfig(({ mode }) => ({
     include: ['@jito-foundation/sdk'],
   },
   build: {
-    rollupOptions: {
-      external: ['@jito-foundation/sdk'],
-    },
+    target: 'esnext',
     commonjsOptions: {
       transformMixedEsModules: true,
     },
