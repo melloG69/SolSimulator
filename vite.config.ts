@@ -25,8 +25,12 @@ export default defineConfig(({ mode }) => ({
     esbuildOptions: {
       target: 'esnext',
     },
+    include: ['@supabase/supabase-js'],
   },
   build: {
     target: 'esnext',
+    commonjsOptions: {
+      include: [/@supabase\/supabase-js/, /node_modules/],
+    },
   },
 }));
