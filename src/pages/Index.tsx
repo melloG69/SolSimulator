@@ -1,10 +1,13 @@
 import BundleBuilder from "@/components/BundleBuilder";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background">
-      <BundleBuilder />
-    </div>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-background">
+        <BundleBuilder />
+      </div>
+    </ProtectedRoute>
   );
 };
 
