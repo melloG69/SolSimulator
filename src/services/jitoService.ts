@@ -1,9 +1,9 @@
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
-import { Bundle, SearcherClient, TipAccountVersion } from "jito-ts";
+import { bundle, SearcherService, TipPoolConfig } from "jito-ts";
 
 class JitoService {
-  private searcherClient: SearcherClient | undefined;
+  private searcherClient: SearcherService | undefined;
   private connection: typeof connection;
 
   constructor() {
@@ -14,7 +14,7 @@ class JitoService {
   private async initializeClient() {
     try {
       // Initialize with Jito devnet endpoint for testing
-      this.searcherClient = new SearcherClient("https://api.devnet.jito.wtf");
+      this.searcherClient = new SearcherService("https://api.devnet.jito.wtf");
     } catch (error) {
       console.error("Error initializing Jito client:", error);
     }
@@ -52,10 +52,10 @@ class JitoService {
       );
 
       // Create a new bundle
-      const bundle = new Bundle(versionedTxs);
+      const jitoBundle = bundle.create(versionedTxs);
 
       // Submit the bundle to Jito
-      const result = await this.searcherClient.sendBundle(bundle);
+      const result = await this.searcherClient.sendBundle(jitoBundle);
       console.log("Bundle submitted successfully:", result);
       return result;
     } catch (error) {
@@ -70,7 +70,7 @@ class JitoService {
         throw new Error("Searcher client not initialized");
       }
 
-      const tipAccount = await this.searcherClient.getTipAccount(TipAccountVersion.V1);
+      const tipAccount = await this.searcherClient.getTipAccount(TipPoolConfig.V1);
       return tipAccount.toBase58();
     } catch (error) {
       console.error("Error getting tip account:", error);
