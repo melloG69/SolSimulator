@@ -10,8 +10,7 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { connection } from "@/lib/solana";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-
-require("@solana/wallet-adapter-react-ui/styles.css");
+import "@solana/wallet-adapter-react-ui/styles.css";
 
 const queryClient = new QueryClient();
 
