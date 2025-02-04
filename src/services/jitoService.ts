@@ -1,20 +1,29 @@
-import { 
-  Bundle, 
-  BundleResult, 
-  SearcherClient, 
-  TipAccountVersion 
-} from "@jito-foundation/sdk";
-import { Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 
+// Dynamic import for Jito SDK to handle ESM/CJS compatibility
+const getJitoSDK = async () => {
+  const jitoSDK = await import('@jito-foundation/sdk');
+  return {
+    Bundle: jitoSDK.Bundle,
+    SearcherClient: jitoSDK.SearcherClient,
+    TipAccountVersion: jitoSDK.TipAccountVersion,
+  };
+};
+
 class JitoService {
-  private searcherClient: SearcherClient;
-  private connection: Connection;
+  private searcherClient: any;
+  private connection: typeof connection;
 
   constructor() {
+    this.connection = connection;
+    this.initializeClient();
+  }
+
+  private async initializeClient() {
+    const { SearcherClient } = await getJitoSDK();
     // Initialize with Jito devnet endpoint for testing
     this.searcherClient = new SearcherClient("https://api.devnet.jito.wtf");
-    this.connection = connection;
   }
 
   async validateTransactions(transactions: Transaction[]): Promise<boolean> {
@@ -34,8 +43,10 @@ class JitoService {
     }
   }
 
-  async submitBundle(transactions: Transaction[]): Promise<BundleResult | null> {
+  async submitBundle(transactions: Transaction[]): Promise<any> {
     try {
+      const { Bundle } = await getJitoSDK();
+      
       // Convert transactions to VersionedTransaction format
       const versionedTxs = await Promise.all(
         transactions.map(async (tx) => {
@@ -59,6 +70,7 @@ class JitoService {
 
   async getTipAccount(): Promise<string | null> {
     try {
+      const { TipAccountVersion } = await getJitoSDK();
       const tipAccount = await this.searcherClient.getTipAccount(TipAccountVersion.V1);
       return tipAccount.toBase58();
     } catch (error) {

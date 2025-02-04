@@ -17,11 +17,21 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Add Node.js polyfills
+      crypto: 'crypto-browserify',
+      stream: 'stream-browserify',
+      assert: 'assert',
+      http: 'stream-http',
+      https: 'https-browserify',
+      os: 'os-browserify',
+      url: 'url',
+      buffer: 'buffer',
     },
   },
   define: {
     'process.env': {},
     'process.env.BROWSER': true,
+    global: 'globalThis',
   },
   optimizeDeps: {
     esbuildOptions: {
@@ -29,6 +39,15 @@ export default defineConfig(({ mode }) => ({
       define: {
         global: 'globalThis',
       },
+    },
+    include: ['@jito-foundation/sdk'],
+  },
+  build: {
+    rollupOptions: {
+      external: ['@jito-foundation/sdk'],
+    },
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
 }));
