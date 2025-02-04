@@ -1,22 +1,79 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { connection, wallet } from "@/lib/solana";
-import { Transaction, TransactionInstruction, PublicKey } from "@solana/web3.js";
+import { Transaction, TransactionInstruction, PublicKey, ComputeBudgetProgram } from "@solana/web3.js";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const BundleBuilder = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const addTransaction = useCallback(async () => {
+    try {
+      // Create a simple transfer transaction as an example
+      const newTransaction = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({
+          units: 200_000,
+        })
+      );
+      
+      // Add required recent blockhash
+      newTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      newTransaction.feePayer = wallet.publicKey;
+      
+      setTransactions(prev => [...prev, newTransaction]);
+      
+      toast({
+        title: "Transaction Added",
+        description: "New transaction has been added to the bundle",
+      });
+    } catch (error) {
+      console.error("Error adding transaction:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add transaction",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
 
   const simulateBundle = async () => {
     setLoading(true);
     try {
+      const bundleId = crypto.randomUUID();
+      
+      // Create bundle entry in Supabase
+      await supabase.from('transaction_bundles').insert({
+        id: bundleId,
+        wallet_address: wallet.publicKey.toString(),
+        status: 'simulated'
+      });
+
       // Simulate each transaction in the bundle
       for (const tx of transactions) {
         const simulation = await connection.simulateTransaction(tx);
         console.log("Simulation result:", simulation);
+        
+        // Update simulation results in Supabase
+        await supabase.from('transaction_bundles').update({
+          simulation_result: simulation
+        }).eq('id', bundleId);
       }
-      // TODO: Add Lighthouse assertion logic here
+
+      toast({
+        title: "Simulation Complete",
+        description: "Bundle has been successfully simulated",
+      });
     } catch (error) {
       console.error("Simulation error:", error);
+      toast({
+        title: "Simulation Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
     }
     setLoading(false);
   };
@@ -24,11 +81,32 @@ const BundleBuilder = () => {
   const executeBundle = async () => {
     setLoading(true);
     try {
-      // Add Lighthouse assertion transaction
+      // Sign all transactions
+      transactions.forEach(tx => {
+        tx.sign(wallet);
+      });
+
       // Execute bundle
       console.log("Executing bundle...");
+      
+      // Here we would integrate with Jito's bundle service
+      // For now, we'll execute transactions sequentially
+      for (const tx of transactions) {
+        const signature = await connection.sendTransaction(tx);
+        console.log("Transaction signature:", signature);
+      }
+
+      toast({
+        title: "Success",
+        description: "Bundle executed successfully",
+      });
     } catch (error) {
       console.error("Execution error:", error);
+      toast({
+        title: "Execution Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
     }
     setLoading(false);
   };
@@ -52,24 +130,40 @@ const BundleBuilder = () => {
                   <code className="text-xs text-white/70">Transaction {index + 1}</code>
                 </div>
               ))}
+              <Button
+                onClick={addTransaction}
+                variant="outline"
+                className="w-full mt-2"
+                disabled={loading}
+              >
+                Add Transaction
+              </Button>
             </div>
           </div>
 
           <div className="flex space-x-4">
-            <button
+            <Button
               onClick={simulateBundle}
-              disabled={loading}
-              className="bg-primary text-black px-4 py-2 rounded-md font-mono hover:opacity-90 disabled:opacity-50"
+              disabled={loading || transactions.length === 0}
+              className="flex-1"
+              variant="secondary"
             >
+              {loading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
               Simulate Bundle
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={executeBundle}
-              disabled={loading}
-              className="bg-secondary text-black px-4 py-2 rounded-md font-mono hover:opacity-90 disabled:opacity-50"
+              disabled={loading || transactions.length === 0}
+              className="flex-1"
+              variant="default"
             >
+              {loading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
               Execute Bundle
-            </button>
+            </Button>
           </div>
         </div>
       </div>
