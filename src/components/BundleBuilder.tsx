@@ -20,10 +20,15 @@ const BundleBuilder = () => {
 
   const setWalletContext = async (walletAddress: string) => {
     try {
+      console.log('Setting wallet context for:', walletAddress);
       const { error } = await supabase.rpc('set_wallet_context', { wallet: walletAddress });
-      if (error) throw error;
+      if (error) {
+        console.error("Error setting wallet context:", error);
+        throw error;
+      }
+      console.log('Wallet context set successfully');
     } catch (error) {
-      console.error("Error setting wallet context:", error);
+      console.error("Error in setWalletContext:", error);
       throw error;
     }
   };
@@ -115,8 +120,12 @@ const BundleBuilder = () => {
 
     setLoading(true);
     try {
+      console.log('Starting bundle simulation for wallet:', publicKey.toString());
+      
       // Set wallet context before any database operations
       await setWalletContext(publicKey.toString());
+      console.log('Wallet context set, proceeding with bundle creation');
+      
       const bundleId = crypto.randomUUID();
       
       const { error: insertError } = await supabase.from('transaction_bundles').insert({
@@ -129,6 +138,8 @@ const BundleBuilder = () => {
         console.error("Insert error:", insertError);
         throw new Error(`Failed to insert bundle: ${insertError.message}`);
       }
+
+      console.log('Bundle created successfully, proceeding with validation');
 
       // Use Jito service to validate transactions
       const isValid = await jitoService.validateTransactions(transactions);
