@@ -1,23 +1,9 @@
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
-
-// Dynamic import for Jito SDK to handle ESM/CJS compatibility
-const getJitoSDK = async () => {
-  try {
-    const jitoSDK = await import('@jito-foundation/sdk');
-    return {
-      Bundle: jitoSDK.Bundle,
-      SearcherClient: jitoSDK.SearcherClient,
-      TipAccountVersion: jitoSDK.TipAccountVersion,
-    };
-  } catch (error) {
-    console.error("Error importing Jito SDK:", error);
-    throw error;
-  }
-};
+import { Bundle, SearcherClient, TipAccountVersion } from "@jito-labs/jito-ts";
 
 class JitoService {
-  private searcherClient: any;
+  private searcherClient: SearcherClient | undefined;
   private connection: typeof connection;
 
   constructor() {
@@ -27,7 +13,6 @@ class JitoService {
 
   private async initializeClient() {
     try {
-      const { SearcherClient } = await getJitoSDK();
       // Initialize with Jito devnet endpoint for testing
       this.searcherClient = new SearcherClient("https://api.devnet.jito.wtf");
     } catch (error) {
@@ -54,8 +39,10 @@ class JitoService {
 
   async submitBundle(transactions: Transaction[]): Promise<any> {
     try {
-      const { Bundle } = await getJitoSDK();
-      
+      if (!this.searcherClient) {
+        throw new Error("Searcher client not initialized");
+      }
+
       // Convert transactions to VersionedTransaction format
       const versionedTxs = await Promise.all(
         transactions.map(async (tx) => {
@@ -79,7 +66,10 @@ class JitoService {
 
   async getTipAccount(): Promise<string | null> {
     try {
-      const { TipAccountVersion } = await getJitoSDK();
+      if (!this.searcherClient) {
+        throw new Error("Searcher client not initialized");
+      }
+
       const tipAccount = await this.searcherClient.getTipAccount(TipAccountVersion.V1);
       return tipAccount.toBase58();
     } catch (error) {
