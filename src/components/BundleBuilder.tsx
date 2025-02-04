@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { connection } from "@/lib/solana";
-import { Transaction, PublicKey, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
+import { Transaction, PublicKey, ComputeBudgetProgram } from "@solana/web3.js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle, XCircle, AlertTriangle, Shield } from "lucide-react";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { jitoService } from "@/services/jitoService";
 
 const BundleBuilder = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -121,38 +122,41 @@ const BundleBuilder = () => {
         throw new Error(`Failed to insert bundle: ${insertError.message}`);
       }
 
-      let hasFailedSimulation = false;
-      for (const tx of transactions) {
-        const simulation = await connection.simulateTransaction(tx);
-        
-        if (simulation.value.err) {
-          hasFailedSimulation = true;
-        }
-        
-        const serializedSimulation = {
-          err: simulation.value.err,
-          logs: simulation.value.logs,
-          unitsConsumed: simulation.value.unitsConsumed,
-          accounts: simulation.value.accounts?.map(acc => acc?.toString()),
-        };
-        
+      // Use Jito service to validate transactions
+      const isValid = await jitoService.validateTransactions(transactions);
+      
+      if (!isValid) {
+        setSimulationStatus('failed');
         const { error: updateError } = await supabase.from('transaction_bundles').update({
-          simulation_result: serializedSimulation,
-          status: simulation.value.err ? 'failed' : 'simulated'
+          status: 'failed',
+          simulation_result: { error: 'Bundle validation failed' }
         }).eq('id', bundleId);
 
         if (updateError) {
           throw new Error(`Failed to update simulation result: ${updateError.message}`);
         }
+
+        toast({
+          title: "Simulation Failed",
+          description: "Malicious activity detected in the bundle",
+          variant: "destructive",
+        });
+        return;
       }
 
-      setSimulationStatus(hasFailedSimulation ? 'failed' : 'success');
+      setSimulationStatus('success');
+      const { error: updateError } = await supabase.from('transaction_bundles').update({
+        status: 'simulated',
+        simulation_result: { success: true }
+      }).eq('id', bundleId);
+
+      if (updateError) {
+        throw new Error(`Failed to update simulation result: ${updateError.message}`);
+      }
+
       toast({
-        title: hasFailedSimulation ? "Simulation Failed" : "Simulation Complete",
-        description: hasFailedSimulation 
-          ? "Malicious activity detected in the bundle" 
-          : "Bundle has been successfully simulated",
-        variant: hasFailedSimulation ? "destructive" : "default",
+        title: "Simulation Complete",
+        description: "Bundle has been successfully simulated",
       });
     } catch (error) {
       console.error("Simulation error:", error);
@@ -179,33 +183,25 @@ const BundleBuilder = () => {
     setLoading(true);
     try {
       await setWalletContext(publicKey.toString());
+      
+      // Sign all transactions
       const signedTransactions = await Promise.all(
-        transactions.map(async (tx) => {
-          const signed = await signTransaction(tx);
-          return VersionedTransaction.deserialize(signed.serialize());
-        })
+        transactions.map(tx => signTransaction(tx))
       );
 
-      console.log("Executing bundle...");
-      
-      let hasFailedExecution = false;
-      for (const tx of signedTransactions) {
-        try {
-          const signature = await connection.sendTransaction(tx);
-          console.log("Transaction signature:", signature);
-        } catch (error) {
-          hasFailedExecution = true;
-          console.error("Transaction execution failed:", error);
-        }
+      // Submit bundle using Jito service
+      const bundleResult = await jitoService.submitBundle(
+        signedTransactions.map(tx => Transaction.from(tx.serialize()))
+      );
+
+      if (!bundleResult) {
+        throw new Error("Failed to submit bundle to Jito");
       }
 
-      setExecutionStatus(hasFailedExecution ? 'failed' : 'success');
+      setExecutionStatus('success');
       toast({
-        title: hasFailedExecution ? "Execution Failed" : "Success",
-        description: hasFailedExecution 
-          ? "Some transactions in the bundle failed" 
-          : "Bundle executed successfully",
-        variant: hasFailedExecution ? "destructive" : "default",
+        title: "Success",
+        description: "Bundle executed successfully via Jito",
       });
     } catch (error) {
       console.error("Execution error:", error);
