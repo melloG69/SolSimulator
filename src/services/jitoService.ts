@@ -1,23 +1,12 @@
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
-import { bundle, SearcherService, TipPoolConfig } from "jito-ts";
 
 class JitoService {
-  private searcherClient: SearcherService | undefined;
   private connection: typeof connection;
+  private readonly JITO_API_URL = "https://api.devnet.jito.wtf";
 
   constructor() {
     this.connection = connection;
-    this.initializeClient();
-  }
-
-  private async initializeClient() {
-    try {
-      // Initialize with Jito devnet endpoint for testing
-      this.searcherClient = new SearcherService("https://api.devnet.jito.wtf");
-    } catch (error) {
-      console.error("Error initializing Jito client:", error);
-    }
   }
 
   async validateTransactions(transactions: Transaction[]): Promise<boolean> {
@@ -39,23 +28,27 @@ class JitoService {
 
   async submitBundle(transactions: Transaction[]): Promise<any> {
     try {
-      if (!this.searcherClient) {
-        throw new Error("Searcher client not initialized");
-      }
-
-      // Convert transactions to VersionedTransaction format
-      const versionedTxs = await Promise.all(
-        transactions.map(async (tx) => {
-          const serialized = tx.serialize();
-          return VersionedTransaction.deserialize(serialized);
-        })
+      // Convert transactions to base64 strings
+      const serializedTxs = transactions.map(tx => 
+        Buffer.from(tx.serialize()).toString('base64')
       );
 
-      // Create a new bundle
-      const jitoBundle = bundle.create(versionedTxs);
+      // Submit bundle using HTTP API
+      const response = await fetch(`${this.JITO_API_URL}/bundle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactions: serializedTxs,
+        }),
+      });
 
-      // Submit the bundle to Jito
-      const result = await this.searcherClient.sendBundle(jitoBundle);
+      if (!response.ok) {
+        throw new Error(`Failed to submit bundle: ${response.statusText}`);
+      }
+
+      const result = await response.json();
       console.log("Bundle submitted successfully:", result);
       return result;
     } catch (error) {
@@ -66,12 +59,15 @@ class JitoService {
 
   async getTipAccount(): Promise<string | null> {
     try {
-      if (!this.searcherClient) {
-        throw new Error("Searcher client not initialized");
+      // Get tip account using HTTP API
+      const response = await fetch(`${this.JITO_API_URL}/tip-accounts`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get tip account: ${response.statusText}`);
       }
 
-      const tipAccount = await this.searcherClient.getTipAccount(TipPoolConfig.V1);
-      return tipAccount.toBase58();
+      const { tipAccounts } = await response.json();
+      return tipAccounts[0] || null;
     } catch (error) {
       console.error("Error getting tip account:", error);
       return null;
