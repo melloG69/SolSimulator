@@ -40,12 +40,15 @@ export default defineConfig(({ mode }) => ({
         global: 'globalThis',
       },
     },
-    include: ['@jito-foundation/sdk'],
+    include: ['@jito-labs/jito-ts'],
   },
   build: {
     target: 'esnext',
     commonjsOptions: {
       transformMixedEsModules: true,
+    },
+    rollupOptions: {
+      external: ['@jito-labs/jito-ts'],
     },
   },
 }));
