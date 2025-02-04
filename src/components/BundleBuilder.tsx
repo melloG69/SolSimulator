@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { connection, wallet } from "@/lib/solana";
-import { Transaction, TransactionInstruction, PublicKey, ComputeBudgetProgram } from "@solana/web3.js";
+import { Transaction, TransactionInstruction, PublicKey, ComputeBudgetProgram, VersionedTransaction } from "@solana/web3.js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -57,9 +57,17 @@ const BundleBuilder = () => {
         const simulation = await connection.simulateTransaction(tx);
         console.log("Simulation result:", simulation);
         
+        // Serialize the simulation result before storing
+        const serializedSimulation = {
+          err: simulation.value.err,
+          logs: simulation.value.logs,
+          unitsConsumed: simulation.value.unitsConsumed,
+          accounts: simulation.value.accounts?.map(acc => acc?.toString()),
+        };
+        
         // Update simulation results in Supabase
         await supabase.from('transaction_bundles').update({
-          simulation_result: simulation,
+          simulation_result: serializedSimulation,
           status: 'simulated'
         }).eq('id', bundleId);
       }
@@ -82,11 +90,14 @@ const BundleBuilder = () => {
   const executeBundle = async () => {
     setLoading(true);
     try {
-      // Sign all transactions
-      const signedTransactions = transactions.map(tx => {
-        tx.sign(wallet);
-        return tx;
-      });
+      // Sign and convert to versioned transactions
+      const signedTransactions = await Promise.all(
+        transactions.map(async (tx) => {
+          tx.sign(wallet);
+          const serializedMessage = tx.serialize();
+          return VersionedTransaction.deserialize(serializedMessage);
+        })
+      );
 
       // Execute bundle
       console.log("Executing bundle...");

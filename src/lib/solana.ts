@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 // Initialize connection with commitment level
@@ -10,11 +10,16 @@ const privateKeyBytes = bs58.decode("593S1M6FJ5ZFXwKThzmSu1rR5xkjkDqZwULWbUg5rue
 export const wallet = Keypair.fromSecretKey(privateKeyBytes);
 
 // Export utility functions
-export const signAndSendTransaction = async (transaction: Transaction) => {
+export const signAndSendTransaction = async (transaction: Transaction | VersionedTransaction) => {
   try {
-    transaction.sign(wallet);
-    const signature = await connection.sendTransaction(transaction);
-    return signature;
+    if (transaction instanceof Transaction) {
+      transaction.sign(wallet);
+      const serializedMessage = transaction.serialize();
+      const versionedTx = VersionedTransaction.deserialize(serializedMessage);
+      return await connection.sendTransaction(versionedTx);
+    } else {
+      return await connection.sendTransaction(transaction);
+    }
   } catch (error) {
     console.error("Error sending transaction:", error);
     throw error;
