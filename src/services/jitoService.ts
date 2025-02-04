@@ -1,6 +1,6 @@
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
-import { Bundle, SearcherClient, TipAccountVersion } from "@jito-labs/jito-ts";
+import { Bundle, SearcherClient, TipAccountVersion } from "jito-ts";
 
 class JitoService {
   private searcherClient: SearcherClient | undefined;
