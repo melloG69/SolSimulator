@@ -49,7 +49,7 @@ const BundleBuilder = () => {
       await supabase.from('transaction_bundles').insert({
         id: bundleId,
         wallet_address: wallet.publicKey.toString(),
-        status: 'simulated'
+        status: 'pending'
       });
 
       // Simulate each transaction in the bundle
@@ -59,7 +59,8 @@ const BundleBuilder = () => {
         
         // Update simulation results in Supabase
         await supabase.from('transaction_bundles').update({
-          simulation_result: simulation
+          simulation_result: simulation,
+          status: 'simulated'
         }).eq('id', bundleId);
       }
 
@@ -82,8 +83,9 @@ const BundleBuilder = () => {
     setLoading(true);
     try {
       // Sign all transactions
-      transactions.forEach(tx => {
+      const signedTransactions = transactions.map(tx => {
         tx.sign(wallet);
+        return tx;
       });
 
       // Execute bundle
@@ -91,7 +93,7 @@ const BundleBuilder = () => {
       
       // Here we would integrate with Jito's bundle service
       // For now, we'll execute transactions sequentially
-      for (const tx of transactions) {
+      for (const tx of signedTransactions) {
         const signature = await connection.sendTransaction(tx);
         console.log("Transaction signature:", signature);
       }

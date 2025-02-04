@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 // Initialize connection with commitment level
