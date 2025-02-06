@@ -1,5 +1,6 @@
 
 import { supabase } from "@/integrations/supabase/client";
+import { Json } from "@/integrations/supabase/types";
 
 export const setWalletContext = async (walletAddress: string) => {
   try {
@@ -32,7 +33,7 @@ export const createBundle = async (bundleId: string, walletAddress: string) => {
 export const updateBundleStatus = async (
   bundleId: string, 
   status: 'failed' | 'simulated', 
-  simulationResult: object
+  simulationResult: Json
 ) => {
   await supabase.from('transaction_bundles').update({
     status,
