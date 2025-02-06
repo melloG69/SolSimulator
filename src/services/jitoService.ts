@@ -1,5 +1,7 @@
+
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
+import { Buffer } from 'buffer';
 
 class JitoService {
   private connection: typeof connection;
@@ -10,15 +12,21 @@ class JitoService {
   }
 
   async validateTransactions(transactions: Transaction[]): Promise<boolean> {
+    if (!transactions || transactions.length === 0) {
+      console.log("No transactions to validate");
+      return false;
+    }
+
     try {
-      // Simulate each transaction using Jito's validation rules
       for (const tx of transactions) {
+        console.log("Simulating transaction:", tx);
         const simulation = await this.connection.simulateTransaction(tx);
         if (simulation.value.err) {
           console.error("Transaction validation failed:", simulation.value.err);
           return false;
         }
       }
+      console.log("All transactions validated successfully");
       return true;
     } catch (error) {
       console.error("Error validating transactions:", error);
@@ -27,13 +35,18 @@ class JitoService {
   }
 
   async submitBundle(transactions: Transaction[]): Promise<any> {
-    try {
-      // Convert transactions to base64 strings
-      const serializedTxs = transactions.map(tx => 
-        Buffer.from(tx.serialize()).toString('base64')
-      );
+    if (!transactions || transactions.length === 0) {
+      throw new Error("No transactions provided for bundle submission");
+    }
 
-      // Submit bundle using HTTP API
+    try {
+      console.log("Preparing transactions for bundle submission");
+      const serializedTxs = transactions.map(tx => {
+        const serialized = tx.serialize();
+        return Buffer.from(serialized).toString('base64');
+      });
+
+      console.log("Submitting bundle to Jito API");
       const response = await fetch(`${this.JITO_API_URL}/bundle`, {
         method: 'POST',
         headers: {
@@ -45,6 +58,8 @@ class JitoService {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Bundle submission failed:", errorText);
         throw new Error(`Failed to submit bundle: ${response.statusText}`);
       }
 
@@ -53,20 +68,23 @@ class JitoService {
       return result;
     } catch (error) {
       console.error("Error submitting bundle:", error);
-      return null;
+      throw error; // Re-throw to handle in the component
     }
   }
 
   async getTipAccount(): Promise<string | null> {
     try {
-      // Get tip account using HTTP API
+      console.log("Fetching tip account from Jito API");
       const response = await fetch(`${this.JITO_API_URL}/tip-accounts`);
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to get tip account:", errorText);
         throw new Error(`Failed to get tip account: ${response.statusText}`);
       }
 
       const { tipAccounts } = await response.json();
+      console.log("Tip accounts received:", tipAccounts);
       return tipAccounts[0] || null;
     } catch (error) {
       console.error("Error getting tip account:", error);
