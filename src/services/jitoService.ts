@@ -2,11 +2,12 @@
 import { Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
+import { lighthouseService } from "./lighthouseService";
 
 class JitoService {
   private connection: typeof connection;
   private readonly JITO_API_URL = "https://api.devnet.jito.network";
-  private readonly MAX_COMPUTE_UNITS = 1_400_000; // Solana's maximum compute unit limit
+  private readonly MAX_COMPUTE_UNITS = 1_400_000;
 
   constructor() {
     this.connection = connection;
@@ -46,6 +47,14 @@ class JitoService {
     }
 
     try {
+      // Default assertion strategy
+      const strategy = {
+        balanceTolerance: 2, // 2% tolerance for balance changes
+        requireOwnerMatch: true,
+        requireDelegateMatch: true,
+        requireDataMatch: true
+      };
+
       for (const tx of transactions) {
         // First check compute units in all instructions
         for (const instruction of tx.instructions) {
@@ -55,8 +64,20 @@ class JitoService {
           }
         }
 
-        // Then simulate the transaction
-        console.log("Simulating transaction:", tx);
+        // Build Lighthouse assertions
+        console.log("Building Lighthouse assertions for transaction");
+        const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
+        
+        if (!assertionResult.success || !assertionResult.assertionTransaction) {
+          console.error("Failed to build Lighthouse assertions:", assertionResult.failureReason);
+          return false;
+        }
+
+        // Add assertion transaction to bundle
+        transactions.push(assertionResult.assertionTransaction);
+
+        // Simulate the transaction with assertions
+        console.log("Simulating transaction with assertions:", tx);
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
@@ -65,7 +86,7 @@ class JitoService {
         }
       }
       
-      console.log("All transactions validated successfully");
+      console.log("All transactions validated successfully with Lighthouse assertions");
       return true;
     } catch (error) {
       console.error("Error validating transactions:", error);
@@ -116,4 +137,3 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
-
