@@ -140,7 +140,6 @@ const BundleBuilder = () => {
     
     try {
       console.log('Starting bundle simulation for wallet:', publicKey.toString());
-      
       await setWalletContext(publicKey.toString());
       console.log('Wallet context set, proceeding with bundle creation');
       
