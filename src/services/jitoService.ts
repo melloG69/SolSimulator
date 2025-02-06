@@ -5,7 +5,7 @@ import { Buffer } from 'buffer';
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://api.devnet-primary.jito.network";  // Updated endpoint
+  private readonly JITO_API_URL = "https://api.jito.wtf";  // Updated to correct Jito devnet endpoint
 
   constructor() {
     this.connection = connection;
