@@ -1,3 +1,4 @@
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -20,12 +21,13 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     'process.env': {},
+    global: {},
   },
   optimizeDeps: {
     esbuildOptions: {
       target: 'esnext',
     },
-    include: ['@supabase/supabase-js'],
+    include: ['@supabase/supabase-js', 'buffer'],
   },
   build: {
     target: 'esnext',
