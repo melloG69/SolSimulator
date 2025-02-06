@@ -1,5 +1,5 @@
 
-import { Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Transaction } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 
@@ -68,27 +68,7 @@ class JitoService {
       return result;
     } catch (error) {
       console.error("Error submitting bundle:", error);
-      throw error; // Re-throw to handle in the component
-    }
-  }
-
-  async getTipAccount(): Promise<string | null> {
-    try {
-      console.log("Fetching tip account from Jito API");
-      const response = await fetch(`${this.JITO_API_URL}/tip-accounts`);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Failed to get tip account:", errorText);
-        throw new Error(`Failed to get tip account: ${response.statusText}`);
-      }
-
-      const { tipAccounts } = await response.json();
-      console.log("Tip accounts received:", tipAccounts);
-      return tipAccounts[0] || null;
-    } catch (error) {
-      console.error("Error getting tip account:", error);
-      return null;
+      throw error;
     }
   }
 }

@@ -1,32 +1,32 @@
 
-import { useState, useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { connection } from "@/lib/solana";
-import { Transaction, PublicKey, ComputeBudgetProgram } from "@solana/web3.js";
+import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, XCircle, AlertTriangle, Shield } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { jitoService } from "@/services/jitoService";
+import { useBundleState } from "@/hooks/useBundleState";
+import { TransactionList } from "./bundle/TransactionList";
+import { StatusAlerts } from "./bundle/StatusAlerts";
+import { TransactionControls } from "./bundle/TransactionControls";
+import { BundleActions } from "./bundle/BundleActions";
 
 const BundleBuilder = () => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [simulationStatus, setSimulationStatus] = useState<'idle' | 'success' | 'failed'>('idle');
-  const [executionStatus, setExecutionStatus] = useState<'idle' | 'success' | 'failed'>('idle');
+  const {
+    transactions,
+    setTransactions,
+    loading,
+    setLoading,
+    simulationStatus,
+    setSimulationStatus,
+    executionStatus,
+    setExecutionStatus
+  } = useBundleState();
+
   const { toast } = useToast();
   const { publicKey, signTransaction, connected } = useWallet();
-
-  // Reset states when wallet disconnects
-  useEffect(() => {
-    if (!connected) {
-      setTransactions([]);
-      setSimulationStatus('idle');
-      setExecutionStatus('idle');
-    }
-  }, [connected]);
 
   const setWalletContext = async (walletAddress: string) => {
     try {
@@ -56,7 +56,7 @@ const BundleBuilder = () => {
     try {
       const newTransaction = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitLimit({
-          units: 999999999, // Intentionally high for demo
+          units: 999999999,
         })
       );
       
@@ -78,7 +78,7 @@ const BundleBuilder = () => {
         variant: "destructive",
       });
     }
-  }, [toast, publicKey]);
+  }, [toast, publicKey, setTransactions]);
 
   const addTransaction = useCallback(async () => {
     if (!publicKey) {
@@ -114,7 +114,7 @@ const BundleBuilder = () => {
         variant: "destructive",
       });
     }
-  }, [toast, publicKey]);
+  }, [toast, publicKey, setTransactions]);
 
   const simulateBundle = async () => {
     if (!publicKey) {
@@ -271,84 +271,30 @@ const BundleBuilder = () => {
             </div>
           )}
 
-          {simulationStatus === 'failed' && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Malicious Activity Detected</AlertTitle>
-              <AlertDescription>
-                The bundle simulation detected potentially harmful transactions.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {simulationStatus === 'success' && (
-            <Alert>
-              <Shield className="h-4 w-4" />
-              <AlertTitle>Bundle Validated</AlertTitle>
-              <AlertDescription>
-                All transactions in the bundle passed security checks.
-              </AlertDescription>
-            </Alert>
-          )}
+          <StatusAlerts simulationStatus={simulationStatus} />
 
           <div className="bg-black/50 p-4 rounded-md">
             <h2 className="text-secondary font-mono mb-2">Transaction Bundle</h2>
             <div className="space-y-2">
-              {transactions.map((tx, index) => (
-                <div key={index} className="bg-black/30 p-2 rounded flex items-center justify-between">
-                  <code className="text-xs text-white/70">Transaction {index + 1}</code>
-                  {executionStatus !== 'idle' && (
-                    executionStatus === 'success' 
-                      ? <CheckCircle className="h-4 w-4 text-green-500" />
-                      : <XCircle className="h-4 w-4 text-red-500" />
-                  )}
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <Button
-                  onClick={addTransaction}
-                  variant="outline"
-                  className="flex-1"
-                  disabled={loading || !connected}
-                >
-                  Add Valid Transaction
-                </Button>
-                <Button
-                  onClick={addMaliciousTransaction}
-                  variant="outline"
-                  className="flex-1"
-                  disabled={loading || !connected}
-                >
-                  Add Malicious Transaction
-                </Button>
-              </div>
+              <TransactionList 
+                transactions={transactions}
+                executionStatus={executionStatus}
+              />
+              <TransactionControls
+                onAddTransaction={addTransaction}
+                onAddMaliciousTransaction={addMaliciousTransaction}
+                disabled={loading || !connected}
+              />
             </div>
           </div>
 
-          <div className="flex space-x-4">
-            <Button
-              onClick={simulateBundle}
-              disabled={loading || transactions.length === 0 || !connected}
-              className="flex-1"
-              variant="secondary"
-            >
-              {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              Simulate Bundle
-            </Button>
-            <Button
-              onClick={executeBundle}
-              disabled={loading || transactions.length === 0 || !connected || simulationStatus !== 'success'}
-              className="flex-1"
-              variant="default"
-            >
-              {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              Execute Bundle
-            </Button>
-          </div>
+          <BundleActions
+            onSimulate={simulateBundle}
+            onExecute={executeBundle}
+            loading={loading}
+            disabled={transactions.length === 0 || !connected}
+            simulationStatus={simulationStatus}
+          />
         </div>
       </div>
     </div>
