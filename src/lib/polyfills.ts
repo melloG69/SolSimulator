@@ -5,16 +5,24 @@ import process from 'process';
 import util from 'util';
 import EventEmitter from 'events';
 
-// Ensure Buffer is available globally
+// First, set up Buffer globally
 globalThis.Buffer = Buffer;
 
-// Add other necessary polyfills
+// Then set up process
 if (typeof window !== 'undefined') {
-  window.Buffer = Buffer;
   // @ts-ignore
   window.process = process;
   // @ts-ignore
   window.global = window;
+}
+
+// Ensure Buffer is available on window
+if (typeof window !== 'undefined') {
+  window.Buffer = Buffer;
+}
+
+// Set up stream and related utilities
+if (typeof window !== 'undefined') {
   // @ts-ignore
   window.Stream = stream.Stream;
   // @ts-ignore

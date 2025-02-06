@@ -8,6 +8,9 @@ declare global {
     util: any;
     EventEmitter: any;
   }
+
+  var process: any;
+  var Buffer: typeof Buffer;
 }
 
 export {};
