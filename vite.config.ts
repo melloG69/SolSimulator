@@ -37,6 +37,10 @@ export default defineConfig(({ mode }) => ({
       '@solana/spl-token',
       'bs58',
       'buffer',
+      'stream-browserify',
+      'crypto-browserify',
+      'events',
+      'util',
     ],
   },
   build: {
@@ -47,6 +51,9 @@ export default defineConfig(({ mode }) => ({
         /node_modules/,
         /@solana\/web3\.js/,
         /@solana\/spl-token/,
+        /readable-stream/,
+        /browserify-sign/,
+        /crypto-browserify/,
       ],
     },
     rollupOptions: {
