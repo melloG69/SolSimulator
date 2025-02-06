@@ -5,7 +5,7 @@ import { Buffer } from 'buffer';
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://api.devnet.jito.wtf";
+  private readonly JITO_API_URL = "https://api.devnet-primary.jito.network";  // Updated endpoint
 
   constructor() {
     this.connection = connection;
@@ -46,7 +46,7 @@ class JitoService {
         return Buffer.from(serialized).toString('base64');
       });
 
-      console.log("Submitting bundle to Jito API");
+      console.log("Submitting bundle to Jito API:", `${this.JITO_API_URL}/bundle`);
       const response = await fetch(`${this.JITO_API_URL}/bundle`, {
         method: 'POST',
         headers: {
