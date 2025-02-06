@@ -1,6 +1,5 @@
 
-import { Buffer } from 'buffer';
-globalThis.Buffer = Buffer;
+import './lib/polyfills';
 
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'

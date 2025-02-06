@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      stream: 'stream-browserify',
+      crypto: 'crypto-browserify',
+      buffer: 'buffer',
     },
   },
   define: {
@@ -27,12 +30,27 @@ export default defineConfig(({ mode }) => ({
     esbuildOptions: {
       target: 'esnext',
     },
-    include: ['@supabase/supabase-js', 'buffer'],
+    include: [
+      '@supabase/supabase-js',
+      'buffer',
+      '@solana/web3.js',
+      '@solana/spl-token',
+      'bs58',
+      'buffer',
+    ],
   },
   build: {
     target: 'esnext',
     commonjsOptions: {
-      include: [/@supabase\/supabase-js/, /node_modules/],
+      include: [
+        /@supabase\/supabase-js/,
+        /node_modules/,
+        /@solana\/web3\.js/,
+        /@solana\/spl-token/,
+      ],
+    },
+    rollupOptions: {
+      external: ['buffer'],
     },
   },
 }));
