@@ -1,13 +1,11 @@
 
 import { useCallback } from "react";
-import { connection } from "@/lib/solana";
-import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { jitoService } from "@/services/jitoService";
 import { useBundleState } from "@/hooks/useBundleState";
+import { useTransactionManager } from "@/hooks/useTransactionManager";
+import { useBundleOperations } from "@/hooks/useBundleOperations";
 import { TransactionList } from "./bundle/TransactionList";
 import { StatusAlerts } from "./bundle/StatusAlerts";
 import { TransactionControls } from "./bundle/TransactionControls";
@@ -25,231 +23,44 @@ const BundleBuilder = () => {
     setExecutionStatus
   } = useBundleState();
 
-  const { toast } = useToast();
   const { publicKey, signTransaction, connected } = useWallet();
+  const { addTransaction, addMaliciousTransaction } = useTransactionManager(publicKey);
+  const { simulateBundle, executeBundle } = useBundleOperations();
 
-  const setWalletContext = async (walletAddress: string) => {
-    try {
-      console.log('Setting wallet context for:', walletAddress);
-      const { error } = await supabase.rpc('set_wallet_context', { wallet: walletAddress });
-      if (error) {
-        console.error("Error setting wallet context:", error);
-        throw error;
-      }
-      console.log('Wallet context set successfully');
-    } catch (error) {
-      console.error("Error in setWalletContext:", error);
-      throw error;
-    }
-  };
-
-  const addMaliciousTransaction = useCallback(async () => {
-    if (!publicKey) {
-      toast({
-        title: "Error",
-        description: "Please connect your wallet first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const newTransaction = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitLimit({
-          units: 999999999,
-        })
-      );
-      
-      newTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      newTransaction.feePayer = publicKey;
-      
+  const handleAddTransaction = useCallback(async () => {
+    const newTransaction = await addTransaction();
+    if (newTransaction) {
       setTransactions(prev => [...prev, newTransaction]);
-      
-      toast({
-        title: "Malicious Transaction Added",
-        description: "Added a transaction that will fail simulation",
-        variant: "destructive",
-      });
-    } catch (error) {
-      console.error("Error adding malicious transaction:", error);
-      toast({
-        title: "Error",
-        description: "Failed to add malicious transaction",
-        variant: "destructive",
-      });
     }
-  }, [toast, publicKey, setTransactions]);
+  }, [addTransaction, setTransactions]);
 
-  const addTransaction = useCallback(async () => {
-    if (!publicKey) {
-      toast({
-        title: "Error",
-        description: "Please connect your wallet first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const newTransaction = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitLimit({
-          units: 200_000,
-        })
-      );
-      
-      newTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      newTransaction.feePayer = publicKey;
-      
+  const handleAddMaliciousTransaction = useCallback(async () => {
+    const newTransaction = await addMaliciousTransaction();
+    if (newTransaction) {
       setTransactions(prev => [...prev, newTransaction]);
-      
-      toast({
-        title: "Transaction Added",
-        description: "New transaction has been added to the bundle",
-      });
-    } catch (error) {
-      console.error("Error adding transaction:", error);
-      toast({
-        title: "Error",
-        description: "Failed to add transaction",
-        variant: "destructive",
-      });
     }
-  }, [toast, publicKey, setTransactions]);
+  }, [addMaliciousTransaction, setTransactions]);
 
-  const simulateBundle = async () => {
-    if (!publicKey) {
-      toast({
-        title: "Error",
-        description: "Please connect your wallet first",
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleSimulate = useCallback(async () => {
+    if (!publicKey) return;
+    await simulateBundle(
+      transactions,
+      publicKey.toString(),
+      setLoading,
+      setSimulationStatus
+    );
+  }, [transactions, publicKey, setLoading, setSimulationStatus, simulateBundle]);
 
-    if (transactions.length === 0) {
-      toast({
-        title: "Error",
-        description: "No transactions to simulate",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(true);
-    setSimulationStatus('idle');
-    
-    try {
-      console.log('Starting bundle simulation for wallet:', publicKey.toString());
-      await setWalletContext(publicKey.toString());
-      console.log('Wallet context set, proceeding with bundle creation');
-      
-      const bundleId = crypto.randomUUID();
-      
-      const { error: insertError } = await supabase.from('transaction_bundles').insert({
-        id: bundleId,
-        wallet_address: publicKey.toString(),
-        status: 'pending'
-      });
-
-      if (insertError) {
-        console.error("Insert error:", insertError);
-        throw new Error(`Failed to insert bundle: ${insertError.message}`);
-      }
-
-      console.log('Bundle created successfully, proceeding with validation');
-
-      const isValid = await jitoService.validateTransactions(transactions);
-      
-      if (!isValid) {
-        setSimulationStatus('failed');
-        await supabase.from('transaction_bundles').update({
-          status: 'failed',
-          simulation_result: { error: 'Bundle validation failed' }
-        }).eq('id', bundleId);
-
-        toast({
-          title: "Simulation Failed",
-          description: "Malicious activity detected in the bundle",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setSimulationStatus('success');
-      await supabase.from('transaction_bundles').update({
-        status: 'simulated',
-        simulation_result: { success: true }
-      }).eq('id', bundleId);
-
-      toast({
-        title: "Simulation Complete",
-        description: "Bundle has been successfully simulated",
-      });
-    } catch (error) {
-      console.error("Simulation error:", error);
-      setSimulationStatus('failed');
-      toast({
-        title: "Simulation Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const executeBundle = async () => {
-    if (!publicKey || !signTransaction) {
-      toast({
-        title: "Error",
-        description: "Please connect your wallet first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (transactions.length === 0) {
-      toast({
-        title: "Error",
-        description: "No transactions to execute",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(true);
-    setExecutionStatus('idle');
-    
-    try {
-      await setWalletContext(publicKey.toString());
-      
-      console.log("Signing transactions...");
-      const signedTransactions = await Promise.all(
-        transactions.map(tx => signTransaction(tx))
-      );
-
-      console.log("Submitting bundle to Jito...");
-      const bundleResult = await jitoService.submitBundle(
-        signedTransactions.map(tx => Transaction.from(tx.serialize()))
-      );
-
-      setExecutionStatus('success');
-      toast({
-        title: "Success",
-        description: "Bundle executed successfully via Jito",
-      });
-    } catch (error) {
-      console.error("Execution error:", error);
-      setExecutionStatus('failed');
-      toast({
-        title: "Execution Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleExecute = useCallback(async () => {
+    if (!publicKey) return;
+    await executeBundle(
+      transactions,
+      publicKey.toString(),
+      signTransaction,
+      setLoading,
+      setExecutionStatus
+    );
+  }, [transactions, publicKey, signTransaction, setLoading, setExecutionStatus, executeBundle]);
 
   return (
     <div className="container mx-auto p-4">
@@ -280,16 +91,16 @@ const BundleBuilder = () => {
                 executionStatus={executionStatus}
               />
               <TransactionControls
-                onAddTransaction={addTransaction}
-                onAddMaliciousTransaction={addMaliciousTransaction}
+                onAddTransaction={handleAddTransaction}
+                onAddMaliciousTransaction={handleAddMaliciousTransaction}
                 disabled={loading || !connected}
               />
             </div>
           </div>
 
           <BundleActions
-            onSimulate={simulateBundle}
-            onExecute={executeBundle}
+            onSimulate={handleSimulate}
+            onExecute={handleExecute}
             loading={loading}
             disabled={transactions.length === 0 || !connected}
             simulationStatus={simulationStatus}
