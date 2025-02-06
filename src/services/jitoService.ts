@@ -5,7 +5,7 @@ import { Buffer } from 'buffer';
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://api.jito.wtf";  // Updated to correct Jito devnet endpoint
+  private readonly JITO_API_URL = "https://api.devnet.jito.network";  // Updated to correct Jito devnet endpoint
 
   constructor() {
     this.connection = connection;
@@ -46,8 +46,10 @@ class JitoService {
         return Buffer.from(serialized).toString('base64');
       });
 
-      console.log("Submitting bundle to Jito API:", `${this.JITO_API_URL}/bundle`);
-      const response = await fetch(`${this.JITO_API_URL}/bundle`, {
+      const bundleEndpoint = `${this.JITO_API_URL}/bundle`;
+      console.log("Submitting bundle to Jito API:", bundleEndpoint);
+      
+      const response = await fetch(bundleEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -59,8 +61,9 @@ class JitoService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Bundle submission failed:", errorText);
-        throw new Error(`Failed to submit bundle: ${response.statusText}`);
+        console.error("Bundle submission failed with status:", response.status);
+        console.error("Error response:", errorText);
+        throw new Error(`Failed to submit bundle: ${response.statusText} (${response.status})`);
       }
 
       const result = await response.json();
@@ -74,3 +77,4 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
+
