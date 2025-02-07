@@ -15,7 +15,7 @@ export const StatusAlerts = ({ simulationStatus }: StatusAlertsProps) => {
       <AlertTriangle className="h-4 w-4" />
       <AlertTitle>Malicious Activity Detected</AlertTitle>
       <AlertDescription>
-        The bundle simulation detected potentially harmful transactions.
+        The bundle simulation detected potentially harmful transactions. Please review the transaction details below.
       </AlertDescription>
     </Alert>
   ) : (
@@ -23,7 +23,7 @@ export const StatusAlerts = ({ simulationStatus }: StatusAlertsProps) => {
       <Shield className="h-4 w-4" />
       <AlertTitle>Bundle Validated</AlertTitle>
       <AlertDescription>
-        All transactions in the bundle passed security checks.
+        All transactions in the bundle passed security checks. You can now proceed with execution.
       </AlertDescription>
     </Alert>
   );

@@ -10,6 +10,7 @@ export type ExecutionStatus = 'idle' | 'success' | 'failed';
 export interface SimulationResult {
   success: boolean;
   message?: string;
+  bundleId?: string;
 }
 
 export const useBundleState = () => {

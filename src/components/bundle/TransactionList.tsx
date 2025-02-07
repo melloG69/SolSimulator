@@ -15,7 +15,7 @@ interface TransactionListProps {
   transactions: Transaction[];
   executionStatus: ExecutionStatus;
   signatures?: string[];
-  simulationResults?: Array<{ success: boolean; message?: string }>;
+  simulationResults?: Array<{ success: boolean; message?: string; bundleId?: string }>;
 }
 
 export const TransactionList = ({ 
@@ -43,7 +43,14 @@ export const TransactionList = ({
       {transactions.map((tx, index) => (
         <div key={index} className="bg-black/30 p-4 rounded-lg space-y-2">
           <div className="flex items-center justify-between">
-            <code className="text-xs text-white/70">Transaction {index + 1}</code>
+            <div className="space-y-1">
+              <code className="text-xs text-white/70">Transaction {index + 1}</code>
+              {simulationResults[index]?.bundleId && (
+                <div className="text-xs text-white/50">
+                  Bundle ID: {simulationResults[index].bundleId}
+                </div>
+              )}
+            </div>
             {executionStatus !== 'idle' && (
               executionStatus === 'success' 
                 ? <CheckCircle className="h-4 w-4 text-green-500" />
