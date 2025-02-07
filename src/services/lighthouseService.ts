@@ -4,7 +4,8 @@ import {
   PublicKey, 
   TransactionInstruction,
   SYSVAR_CLOCK_PUBKEY,
-  SystemProgram
+  SystemProgram,
+  ComputeBudgetProgram
 } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
