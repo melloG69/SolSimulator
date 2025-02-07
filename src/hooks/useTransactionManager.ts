@@ -10,6 +10,7 @@ import {
 } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { useToast } from "@/hooks/use-toast";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 export type MaliciousType = 'compute' | 'balance' | 'ownership' | 'data';
 
@@ -31,7 +32,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       
       switch (type) {
         case 'compute':
-          // Extremely high compute units
+          console.log("Creating high compute units attack transaction");
           maliciousTransaction.add(
             ComputeBudgetProgram.setComputeUnitLimit({
               units: 999999999,
@@ -40,24 +41,24 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
           break;
 
         case 'balance':
-          // Attempt to drain more SOL than available
+          console.log("Creating balance drain attack transaction");
           const balance = await connection.getBalance(publicKey);
           maliciousTransaction.add(
             SystemProgram.transfer({
               fromPubkey: publicKey,
               toPubkey: PublicKey.default,
-              lamports: balance * 2, // Try to transfer twice the available balance
+              lamports: balance * 2, // Attempt to transfer twice the available balance
             })
           );
           break;
 
         case 'ownership':
-          // Attempt unauthorized ownership change
+          console.log("Creating ownership attack transaction");
           maliciousTransaction.add(
             new TransactionInstruction({
               keys: [
                 { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: PublicKey.default, isSigner: false, isWritable: true },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: true },
               ],
               programId: SystemProgram.programId,
               data: Buffer.from([2]), // Invalid ownership transfer attempt
@@ -66,11 +67,14 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
           break;
 
         case 'data':
-          // Attempt to modify protected data
+          console.log("Creating data manipulation attack transaction");
           maliciousTransaction.add(
             new TransactionInstruction({
-              keys: [{ pubkey: publicKey, isSigner: true, isWritable: true }],
-              programId: new PublicKey("LHi8mAU9LVi8Rv1tkHxE5vKg1cdPwkQFBG7dT4SdPvR"),
+              keys: [
+                { pubkey: publicKey, isSigner: true, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: true }
+              ],
+              programId: SystemProgram.programId,
               data: Buffer.from([1, 2, 3, 4]), // Invalid data modification attempt
             })
           );
@@ -82,7 +86,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       
       toast({
         title: "Malicious Transaction Added",
-        description: `Added a ${type} attack transaction that will fail simulation`,
+        description: `Added a ${type} attack transaction that will fail validation`,
         variant: "destructive",
       });
 

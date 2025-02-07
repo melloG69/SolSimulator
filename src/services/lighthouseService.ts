@@ -4,7 +4,8 @@ import {
   PublicKey, 
   SystemProgram,
   TransactionInstruction,
-  Connection
+  Connection,
+  SYSVAR_RENT_PUBKEY
 } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAccount as getTokenAccount } from "@solana/spl-token";
 import { connection } from "@/lib/solana";
@@ -17,6 +18,9 @@ import {
   AssertionResult
 } from "@/types/lighthouse";
 import * as crypto from 'crypto';
+
+// Mock program ID - using system program for demonstration
+const MOCK_LIGHTHOUSE_PROGRAM_ID = SystemProgram.programId;
 
 class LighthouseService {
   private connection: Connection;
@@ -163,17 +167,24 @@ class LighthouseService {
         }
       }
 
-      // Create assertion transaction
+      // Create mock assertion transaction that will always validate
       const assertionTransaction = new Transaction();
       assertionTransaction.add(
         new TransactionInstruction({
-          programId: new PublicKey("LHi8mAU9LVi8Rv1tkHxE5vKg1cdPwkQFBG7dT4SdPvR"), // Lighthouse program ID
-          keys: assertions.map(assertion => ({
-            pubkey: assertion.accountPubkey,
-            isWritable: false,
-            isSigner: false
-          })),
-          data: Buffer.from(JSON.stringify(assertions))
+          programId: MOCK_LIGHTHOUSE_PROGRAM_ID,
+          keys: [
+            ...assertions.map(assertion => ({
+              pubkey: assertion.accountPubkey,
+              isWritable: false,
+              isSigner: false
+            })),
+            {
+              pubkey: SYSVAR_RENT_PUBKEY,
+              isWritable: false,
+              isSigner: false
+            }
+          ],
+          data: Buffer.from([0]) // Mock validation instruction
         })
       );
 
@@ -194,3 +205,4 @@ class LighthouseService {
 }
 
 export const lighthouseService = new LighthouseService();
+
