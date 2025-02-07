@@ -9,7 +9,6 @@ import {
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 
-// Lighthouse mainnet program ID
 const LIGHTHOUSE_PROGRAM_ID = new PublicKey("LHi8mAU9LVi8Rv1tkHxE5vKg1cdPwkQFBG7dT4SdPvR");
 
 interface AssertionStrategy {
@@ -32,6 +31,16 @@ class LighthouseService {
     this.connection = connection;
   }
 
+  private async validateAccount(pubkey: PublicKey): Promise<boolean> {
+    try {
+      const accountInfo = await this.connection.getAccountInfo(pubkey);
+      return accountInfo !== null;
+    } catch (error) {
+      console.error("Error validating account:", error);
+      return false;
+    }
+  }
+
   async buildAssertions(
     transaction: Transaction,
     strategy: AssertionStrategy
@@ -42,9 +51,23 @@ class LighthouseService {
         .flatMap(ix => ix.keys.filter(key => key.isWritable))
         .map(key => key.pubkey);
 
-      // Get pre-execution state
+      // Validate all accounts exist before proceeding
+      const accountValidations = await Promise.all(
+        writableAccounts.map(pubkey => this.validateAccount(pubkey))
+      );
+
+      const validAccounts = writableAccounts.filter((_, index) => accountValidations[index]);
+
+      if (validAccounts.length === 0) {
+        return {
+          success: false,
+          failureReason: "No valid accounts found for assertions"
+        };
+      }
+
+      // Get pre-execution state for valid accounts only
       const accountInfos = await Promise.all(
-        writableAccounts.map(pubkey => this.connection.getAccountInfo(pubkey))
+        validAccounts.map(pubkey => this.connection.getAccountInfo(pubkey))
       );
 
       // Build assertion data
@@ -52,31 +75,27 @@ class LighthouseService {
       let offset = 0;
 
       // Write header
-      assertionData.writeUInt8(0x1, offset); // Version
+      assertionData.writeUInt8(0x1, offset);
       offset += 1;
 
-      // Write account assertions
-      for (let i = 0; i < writableAccounts.length; i++) {
+      // Write account assertions only for valid accounts
+      for (let i = 0; i < validAccounts.length; i++) {
         const accountInfo = accountInfos[i];
         if (!accountInfo) continue;
 
-        // Write account pubkey
-        writableAccounts[i].toBuffer().copy(assertionData, offset);
+        validAccounts[i].toBuffer().copy(assertionData, offset);
         offset += 32;
 
-        // Write balance assertion if applicable
         if (strategy.balanceTolerance > 0) {
           assertionData.writeBigUInt64LE(BigInt(accountInfo.lamports), offset);
           offset += 8;
         }
 
-        // Write owner assertion if required
         if (strategy.requireOwnerMatch) {
           accountInfo.owner.toBuffer().copy(assertionData, offset);
           offset += 32;
         }
 
-        // Write data hash if required
         if (strategy.requireDataMatch) {
           const dataHash = Buffer.from(accountInfo.data);
           assertionData.writeUInt32LE(dataHash.length, offset);
@@ -90,7 +109,7 @@ class LighthouseService {
       const assertionInstruction = new TransactionInstruction({
         programId: LIGHTHOUSE_PROGRAM_ID,
         keys: [
-          ...writableAccounts.map(pubkey => ({
+          ...validAccounts.map(pubkey => ({
             pubkey,
             isSigner: false,
             isWritable: false

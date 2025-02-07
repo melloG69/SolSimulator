@@ -10,12 +10,48 @@ import {
 } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { useToast } from "@/hooks/use-toast";
-import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 
 export type MaliciousType = 'compute' | 'balance' | 'ownership' | 'data';
 
 export const useTransactionManager = (publicKey: PublicKey | null) => {
   const { toast } = useToast();
+
+  const findExistingTokenAccount = async (wallet: PublicKey) => {
+    try {
+      // First try USDC as it's common
+      const usdcMint = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+      const usdcAccount = await getAssociatedTokenAddress(usdcMint, wallet);
+      const accountInfo = await connection.getAccountInfo(usdcAccount);
+      
+      if (accountInfo) {
+        return usdcAccount;
+      }
+
+      // If no USDC account, look for any token accounts
+      const tokenAccounts = await connection.getTokenAccountsByOwner(wallet, {
+        programId: TOKEN_PROGRAM_ID,
+      });
+
+      if (tokenAccounts.value.length > 0) {
+        return tokenAccounts.value[0].pubkey;
+      }
+
+      // Try TOKEN_2022 accounts as fallback
+      const token2022Accounts = await connection.getTokenAccountsByOwner(wallet, {
+        programId: TOKEN_2022_PROGRAM_ID,
+      });
+
+      if (token2022Accounts.value.length > 0) {
+        return token2022Accounts.value[0].pubkey;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error finding token account:", error);
+      return null;
+    }
+  };
 
   const addMaliciousTransaction = useCallback(async (type: MaliciousType = 'compute') => {
     if (!publicKey) {
@@ -46,7 +82,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
           maliciousTransaction.add(
             SystemProgram.transfer({
               fromPubkey: publicKey,
-              toPubkey: SystemProgram.programId, // Use existing system program account
+              toPubkey: SystemProgram.programId,
               lamports: balance * 2,
             })
           );
@@ -54,35 +90,34 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
 
         case 'ownership':
           console.log("Creating ownership attack transaction");
-          // Get the associated token account for USDC (a known token on mainnet)
-          const usdcMint = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-          const associatedTokenAccount = await getAssociatedTokenAddress(
-            usdcMint,
-            publicKey
-          );
+          const tokenAccount = await findExistingTokenAccount(publicKey);
           
-          // Check if the token account exists
-          const accountInfo = await connection.getAccountInfo(associatedTokenAccount);
-          if (!accountInfo) {
-            throw new Error("Token account not found");
+          if (!tokenAccount) {
+            console.log("No token accounts found, falling back to SOL account attack");
+            maliciousTransaction.add(
+              SystemProgram.assign({
+                accountPubkey: publicKey,
+                programId: new PublicKey('11111111111111111111111111111111'),
+              })
+            );
+          } else {
+            console.log("Found token account, creating token-based attack");
+            maliciousTransaction.add(
+              new TransactionInstruction({
+                keys: [
+                  { pubkey: publicKey, isSigner: true, isWritable: true },
+                  { pubkey: tokenAccount, isSigner: false, isWritable: true },
+                  { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                ],
+                programId: TOKEN_PROGRAM_ID,
+                data: Buffer.from([3]), // Close account instruction
+              })
+            );
           }
-
-          maliciousTransaction.add(
-            new TransactionInstruction({
-              keys: [
-                { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: associatedTokenAccount, isSigner: false, isWritable: true },
-                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-              ],
-              programId: TOKEN_PROGRAM_ID,
-              data: Buffer.from([3, 0, 0, 0]), // Invalid token instruction
-            })
-          );
           break;
 
         case 'data':
           console.log("Creating data manipulation attack transaction");
-          // Use System Program for data manipulation attempt
           maliciousTransaction.add(
             SystemProgram.assign({
               accountPubkey: publicKey,
@@ -153,4 +188,3 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     addMaliciousTransaction
   };
 };
-
