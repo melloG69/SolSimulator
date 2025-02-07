@@ -1,8 +1,18 @@
-
 import { Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 import { lighthouseService } from "./lighthouseService";
+
+interface JitoResponse {
+  jsonrpc: "2.0";
+  result?: any;
+  error?: {
+    code: number;
+    message: string;
+    data?: any;
+  };
+  id: string | number;
+}
 
 class JitoService {
   private connection: typeof connection;
@@ -146,6 +156,10 @@ class JitoService {
     }
   }
 
+  private generateRequestId(): string {
+    return `jito-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
   async submitBundle(transactions: Transaction[]): Promise<any> {
     // Validate bundle constraints
     const bundleValidation = this.validateBundleConstraints(transactions);
@@ -163,39 +177,62 @@ class JitoService {
         return Buffer.from(serialized).toString('base64');
       });
 
+      const requestId = this.generateRequestId();
       const bundleEndpoint = `${this.JITO_API_URL}/api/${this.API_VERSION}/bundles`;
+      
       console.log("Submitting bundle to Jito API:", bundleEndpoint);
+      console.log("Request payload:", {
+        jsonrpc: "2.0",
+        method: "submitBundle",
+        params: {
+          transactions: serializedTxs,
+          version: this.API_VERSION
+        },
+        id: requestId
+      });
       
       const response = await fetch(bundleEndpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          'Content-Type': 'application/json-rpc',
+          'Accept': 'application/json-rpc',
         },
         body: JSON.stringify({
-          transactions: serializedTxs,
-          meta: {
-            version: this.API_VERSION,
-          }
+          jsonrpc: "2.0",
+          method: "submitBundle",
+          params: {
+            transactions: serializedTxs,
+            version: this.API_VERSION
+          },
+          id: requestId
         }),
       });
 
+      const responseText = await response.text();
+      console.log("Raw response:", responseText);
+
       if (!response.ok) {
-        const errorText = await response.text();
         console.error("Bundle submission failed with status:", response.status);
-        console.error("Error response:", errorText);
-        throw new Error(`Failed to submit bundle: ${response.statusText} (${response.status})`);
+        console.error("Error response:", responseText);
+        throw new Error(`Failed to submit bundle: ${responseText} (${response.status})`);
       }
 
-      const result = await response.json();
+      let result: JitoResponse;
+      try {
+        result = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Failed to parse JSON response:", e);
+        throw new Error("Invalid JSON response from Jito API");
+      }
+
+      if (result.error) {
+        console.error("Jito API returned error:", result.error);
+        throw new Error(`Jito API error: ${result.error.message}`);
+      }
+
       console.log("Bundle submitted successfully:", result);
       
-      // Check bundle status
-      if (result.status === 'accepted') {
-        return result;
-      } else {
-        throw new Error(`Bundle submission failed: ${result.status}`);
-      }
+      return result.result;
     } catch (error) {
       console.error("Error submitting bundle:", error);
       throw error;
@@ -204,4 +241,3 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
-
