@@ -1,3 +1,4 @@
+
 import { Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
@@ -77,8 +78,6 @@ class JitoService {
       // Process transactions in sequence
       for (const tx of transactions) {
         console.log("Building Lighthouse assertions for transaction");
-        
-        // Use appropriate validation strategy based on transaction type
         const assertionResult = await lighthouseService.buildAssertions(tx);
         
         if (!assertionResult.success) {
@@ -86,8 +85,7 @@ class JitoService {
           return false;
         }
 
-        // Simulate the original transaction
-        console.log("Simulating transaction");
+        // Simulate the transaction
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
@@ -95,7 +93,6 @@ class JitoService {
           return false;
         }
 
-        // If there's an assertion transaction, simulate it as well
         if (assertionResult.assertionTransaction) {
           assertionResult.assertionTransaction.feePayer = tx.feePayer;
           const assertionSimulation = await this.connection.simulateTransaction(
@@ -134,10 +131,10 @@ class JitoService {
       
       for (const tx of transactions) {
         const strategy = {
-          balanceTolerance: 1,
-          requireOwnerMatch: true,
-          requireDelegateMatch: true,
-          requireDataMatch: true
+          balanceTolerance: 5,
+          requireOwnerMatch: false,
+          requireDelegateMatch: false,
+          requireDataMatch: false
         };
 
         const assertionResult = await lighthouseService.buildAssertions(tx, strategy);

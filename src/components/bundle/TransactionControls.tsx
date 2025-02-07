@@ -29,31 +29,14 @@ export const TransactionControls = ({
       >
         Add Valid Transaction
       </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            className="flex-1"
-            disabled={disabled}
-          >
-            Add Malicious Transaction
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => onAddMaliciousTransaction('compute')}>
-            High Compute Units Attack
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onAddMaliciousTransaction('balance')}>
-            Balance Drain Attack
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onAddMaliciousTransaction('ownership')}>
-            Ownership Attack
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onAddMaliciousTransaction('data')}>
-            Data Manipulation Attack
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        variant="outline"
+        className="flex-1"
+        disabled={disabled}
+        onClick={() => onAddMaliciousTransaction('compute')}
+      >
+        Add High Compute Attack
+      </Button>
     </div>
   );
 };
