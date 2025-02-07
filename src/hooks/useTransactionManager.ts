@@ -10,7 +10,7 @@ import {
 } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { useToast } from "@/hooks/use-toast";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from "@solana/spl-token";
 
 export type MaliciousType = 'compute' | 'balance' | 'ownership' | 'data';
 
@@ -46,7 +46,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
           maliciousTransaction.add(
             SystemProgram.transfer({
               fromPubkey: publicKey,
-              toPubkey: new PublicKey('11111111111111111111111111111111'),
+              toPubkey: SystemProgram.programId, // Use existing system program account
               lamports: balance * 2,
             })
           );
@@ -54,28 +54,39 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
 
         case 'ownership':
           console.log("Creating ownership attack transaction");
+          // Get the associated token account for USDC (a known token on mainnet)
+          const usdcMint = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+          const associatedTokenAccount = await getAssociatedTokenAddress(
+            usdcMint,
+            publicKey
+          );
+          
+          // Check if the token account exists
+          const accountInfo = await connection.getAccountInfo(associatedTokenAccount);
+          if (!accountInfo) {
+            throw new Error("Token account not found");
+          }
+
           maliciousTransaction.add(
             new TransactionInstruction({
               keys: [
                 { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: true },
+                { pubkey: associatedTokenAccount, isSigner: false, isWritable: true },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
               ],
-              programId: SystemProgram.programId,
-              data: Buffer.from([2]),
+              programId: TOKEN_PROGRAM_ID,
+              data: Buffer.from([3, 0, 0, 0]), // Invalid token instruction
             })
           );
           break;
 
         case 'data':
           console.log("Creating data manipulation attack transaction");
+          // Use System Program for data manipulation attempt
           maliciousTransaction.add(
-            new TransactionInstruction({
-              keys: [
-                { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: true }
-              ],
+            SystemProgram.assign({
+              accountPubkey: publicKey,
               programId: SystemProgram.programId,
-              data: Buffer.from([1, 2, 3, 4]),
             })
           );
           break;
@@ -94,7 +105,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       console.error("Error adding malicious transaction:", error);
       toast({
         title: "Error",
-        description: "Failed to add malicious transaction",
+        description: error instanceof Error ? error.message : "Failed to add malicious transaction",
         variant: "destructive",
       });
       return null;
@@ -142,3 +153,4 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     addMaliciousTransaction
   };
 };
+
