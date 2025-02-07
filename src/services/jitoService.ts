@@ -1,3 +1,4 @@
+
 import { Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
@@ -16,7 +17,7 @@ interface JitoResponse {
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://jito-api.devnet.solana.com";  // Updated to Jito-specific endpoint
+  private readonly JITO_API_URL = "https://jito-api.devnet.solana.com";
   private readonly MAX_TRANSACTIONS = 5;
   private readonly MAX_COMPUTE_UNITS = 1_400_000;
 
@@ -112,11 +113,8 @@ class JitoService {
         requireDataMatch: true
       };
 
-      // Process each transaction and its assertions
+      // Process each transaction and build assertions
       for (const tx of transactions) {
-        // Add original transaction to the new array
-        transactionsWithAssertions.push(tx);
-
         // Check compute units in all instructions
         for (const instruction of tx.instructions) {
           if (!this.validateComputeUnits(instruction)) {
@@ -133,12 +131,15 @@ class JitoService {
           return false;
         }
 
-        // Ensure assertion transaction has the same fee payer
+        // Add both the original transaction and its assertion
+        transactionsWithAssertions.push(tx);
         assertionResult.assertionTransaction.feePayer = tx.feePayer;
         transactionsWithAssertions.push(assertionResult.assertionTransaction);
+      }
 
-        // Simulate each transaction individually
-        console.log("Simulating transaction with assertions:", tx);
+      // Simulate the entire bundle with assertions
+      for (const tx of transactionsWithAssertions) {
+        console.log("Simulating transaction:", tx);
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
@@ -167,7 +168,31 @@ class JitoService {
 
     try {
       console.log("Preparing transactions for bundle submission");
-      const serializedTxs = transactions.map(tx => {
+      
+      // Build assertions for each transaction
+      const strategy = {
+        balanceTolerance: 2,
+        requireOwnerMatch: true,
+        requireDelegateMatch: true,
+        requireDataMatch: true
+      };
+
+      const bundleWithAssertions: Transaction[] = [];
+      
+      // Add assertions for each transaction
+      for (const tx of transactions) {
+        const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
+        if (!assertionResult.success || !assertionResult.assertionTransaction) {
+          throw new Error(`Failed to build assertions: ${assertionResult.failureReason}`);
+        }
+        
+        // Add transaction followed by its assertion
+        bundleWithAssertions.push(tx);
+        assertionResult.assertionTransaction.feePayer = tx.feePayer;
+        bundleWithAssertions.push(assertionResult.assertionTransaction);
+      }
+
+      const serializedTxs = bundleWithAssertions.map(tx => {
         if (!tx.feePayer) {
           throw new Error("Transaction fee payer required");
         }
@@ -181,7 +206,7 @@ class JitoService {
       
       const requestBody = {
         jsonrpc: "2.0",
-        method: "sendBundle",  // Updated to match Jito's API method name
+        method: "sendBundle",
         params: [{
           transactions: serializedTxs,
           encoding: "base64",

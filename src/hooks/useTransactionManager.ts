@@ -1,13 +1,22 @@
 
 import { useCallback } from "react";
-import { Transaction, ComputeBudgetProgram, PublicKey } from "@solana/web3.js";
+import { 
+  Transaction, 
+  ComputeBudgetProgram, 
+  PublicKey, 
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+  TransactionInstruction
+} from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { useToast } from "@/hooks/use-toast";
+
+export type MaliciousType = 'compute' | 'balance' | 'ownership' | 'data';
 
 export const useTransactionManager = (publicKey: PublicKey | null) => {
   const { toast } = useToast();
 
-  const addMaliciousTransaction = useCallback(async () => {
+  const addMaliciousTransaction = useCallback(async (type: MaliciousType = 'compute') => {
     if (!publicKey) {
       toast({
         title: "Error",
@@ -18,22 +27,66 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     }
 
     try {
-      const newTransaction = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitLimit({
-          units: 999999999,
-        })
-      );
+      let maliciousTransaction = new Transaction();
       
-      newTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      newTransaction.feePayer = publicKey;
+      switch (type) {
+        case 'compute':
+          // Extremely high compute units
+          maliciousTransaction.add(
+            ComputeBudgetProgram.setComputeUnitLimit({
+              units: 999999999,
+            })
+          );
+          break;
+
+        case 'balance':
+          // Attempt to drain more SOL than available
+          const balance = await connection.getBalance(publicKey);
+          maliciousTransaction.add(
+            SystemProgram.transfer({
+              fromPubkey: publicKey,
+              toPubkey: PublicKey.default,
+              lamports: balance * 2, // Try to transfer twice the available balance
+            })
+          );
+          break;
+
+        case 'ownership':
+          // Attempt unauthorized ownership change
+          maliciousTransaction.add(
+            new TransactionInstruction({
+              keys: [
+                { pubkey: publicKey, isSigner: true, isWritable: true },
+                { pubkey: PublicKey.default, isSigner: false, isWritable: true },
+              ],
+              programId: SystemProgram.programId,
+              data: Buffer.from([2]), // Invalid ownership transfer attempt
+            })
+          );
+          break;
+
+        case 'data':
+          // Attempt to modify protected data
+          maliciousTransaction.add(
+            new TransactionInstruction({
+              keys: [{ pubkey: publicKey, isSigner: true, isWritable: true }],
+              programId: new PublicKey("LHi8mAU9LVi8Rv1tkHxE5vKg1cdPwkQFBG7dT4SdPvR"),
+              data: Buffer.from([1, 2, 3, 4]), // Invalid data modification attempt
+            })
+          );
+          break;
+      }
+      
+      maliciousTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      maliciousTransaction.feePayer = publicKey;
       
       toast({
         title: "Malicious Transaction Added",
-        description: "Added a transaction that will fail simulation",
+        description: `Added a ${type} attack transaction that will fail simulation`,
         variant: "destructive",
       });
 
-      return newTransaction;
+      return maliciousTransaction;
     } catch (error) {
       console.error("Error adding malicious transaction:", error);
       toast({

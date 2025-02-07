@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useBundleState } from "@/hooks/useBundleState";
-import { useTransactionManager } from "@/hooks/useTransactionManager";
+import { useTransactionManager, MaliciousType } from "@/hooks/useTransactionManager";
 import { useBundleOperations } from "@/hooks/useBundleOperations";
 import { TransactionList } from "./bundle/TransactionList";
 import { StatusAlerts } from "./bundle/StatusAlerts";
@@ -34,8 +34,8 @@ const BundleBuilder = () => {
     }
   }, [addTransaction, setTransactions]);
 
-  const handleAddMaliciousTransaction = useCallback(async () => {
-    const newTransaction = await addMaliciousTransaction();
+  const handleAddMaliciousTransaction = useCallback(async (type: MaliciousType) => {
+    const newTransaction = await addMaliciousTransaction(type);
     if (newTransaction) {
       setTransactions(prev => [...prev, newTransaction]);
     }
