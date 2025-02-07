@@ -16,29 +16,19 @@ interface JitoResponse {
   id: string | number;
 }
 
-type Region = 'global' | 'amsterdam' | 'frankfurt' | 'ny' | 'tokyo' | 'slc';
-
 class JitoService {
   private connection: typeof connection;
-  private readonly MAX_TRANSACTIONS = 5; // Updated to Jito's max limit
+  private readonly MAX_TRANSACTIONS = 5;
   private readonly REQUEST_TIMEOUT = 30000;
   private readonly API_VERSION = 'v1';
-  private readonly REGIONS: Record<Region, string> = {
-    global: 'https://mainnet.block-engine.jito.wtf',
-    amsterdam: 'https://amsterdam.mainnet.block-engine.jito.wtf',
-    frankfurt: 'https://frankfurt.mainnet.block-engine.jito.wtf',
-    ny: 'https://ny.mainnet.block-engine.jito.wtf',
-    tokyo: 'https://tokyo.mainnet.block-engine.jito.wtf',
-    slc: 'https://slc.mainnet.block-engine.jito.wtf'
-  };
-  private currentRegion: Region = 'global';
+  private readonly BASE_URL = 'https://mainnet.block-engine.jito.wtf';
 
   constructor() {
     this.connection = connection;
   }
 
   private getApiUrl(endpoint: 'bundles' | 'transactions'): string {
-    return `${this.REGIONS[this.currentRegion]}/api/${this.API_VERSION}/${endpoint}`;
+    return `${this.BASE_URL}/api/${this.API_VERSION}/${endpoint}`;
   }
 
   private validateBundleConstraints(transactions: Transaction[]): { isValid: boolean; error?: string } {
@@ -108,29 +98,10 @@ class JitoService {
       return await response.json();
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Request timeout for region ${this.currentRegion}`);
+        throw new Error('Request timeout');
       }
       throw error;
     }
-  }
-
-  private async tryWithRegionFailover<T>(operation: () => Promise<T>): Promise<T> {
-    const regions: Region[] = ['global', 'ny', 'frankfurt', 'amsterdam', 'tokyo', 'slc'];
-    let lastError: Error | null = null;
-
-    for (const region of regions) {
-      try {
-        this.currentRegion = region;
-        console.log(`Attempting operation with ${region} region`);
-        return await operation();
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`Failed with region ${region}:`, error);
-        continue;
-      }
-    }
-
-    throw lastError || new Error('All regions failed');
   }
 
   async validateTransactions(transactions: Transaction[]): Promise<boolean> {
@@ -198,7 +169,7 @@ class JitoService {
   }
 
   async submitBundle(transactions: Transaction[]): Promise<any> {
-    return this.tryWithRegionFailover(async () => {
+    try {
       const bundleValidation = this.validateBundleConstraints(transactions);
       if (!bundleValidation.isValid) {
         throw new Error(bundleValidation.error);
@@ -235,7 +206,7 @@ class JitoService {
         return Buffer.from(serialized).toString('base64');
       });
 
-      console.log(`Submitting bundle to Jito API (${this.currentRegion} region)`);
+      console.log("Submitting bundle to Jito API");
       
       const response = await this.makeRequest(
         this.getApiUrl('bundles'),
@@ -253,10 +224,14 @@ class JitoService {
       }
 
       console.log("Bundle submitted successfully:", response);
-      toast.success(`Bundle submitted successfully to Jito (${this.currentRegion} region)`);
+      toast.success("Bundle submitted successfully to Jito");
       return response.result;
-    });
+    } catch (error) {
+      console.error("Error submitting bundle:", error);
+      throw error;
+    }
   }
 }
 
 export const jitoService = new JitoService();
+
