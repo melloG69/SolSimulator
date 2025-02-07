@@ -66,6 +66,15 @@ class JitoService {
       };
     }
 
+    // Check if all transactions have fee payers
+    const hasFeePayers = transactions.every(tx => tx.feePayer);
+    if (!hasFeePayers) {
+      return {
+        isValid: false,
+        error: "All transactions must have fee payers set"
+      };
+    }
+
     return { isValid: true };
   }
 
@@ -76,6 +85,9 @@ class JitoService {
     }
 
     try {
+      // Create a new array for transactions with assertions
+      const transactionsWithAssertions: Transaction[] = [];
+      
       // Validate bundle constraints first
       const bundleValidation = this.validateBundleConstraints(transactions);
       if (!bundleValidation.isValid) {
@@ -91,7 +103,11 @@ class JitoService {
         requireDataMatch: true
       };
 
+      // Process each transaction and its assertions
       for (const tx of transactions) {
+        // Add original transaction to the new array
+        transactionsWithAssertions.push(tx);
+
         // Check compute units in all instructions
         for (const instruction of tx.instructions) {
           if (!this.validateComputeUnits(instruction)) {
@@ -108,8 +124,11 @@ class JitoService {
           return false;
         }
 
-        transactions.push(assertionResult.assertionTransaction);
+        // Ensure assertion transaction has the same fee payer
+        assertionResult.assertionTransaction.feePayer = tx.feePayer;
+        transactionsWithAssertions.push(assertionResult.assertionTransaction);
 
+        // Simulate each transaction individually
         console.log("Simulating transaction with assertions:", tx);
         const simulation = await this.connection.simulateTransaction(tx);
         
@@ -137,6 +156,9 @@ class JitoService {
     try {
       console.log("Preparing transactions for bundle submission");
       const serializedTxs = transactions.map(tx => {
+        if (!tx.feePayer) {
+          throw new Error("Transaction fee payer required");
+        }
         const serialized = tx.serialize();
         return Buffer.from(serialized).toString('base64');
       });
