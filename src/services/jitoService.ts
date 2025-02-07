@@ -3,6 +3,7 @@ import { Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgra
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 import { lighthouseService } from "./lighthouseService";
+import { toast } from "sonner";
 
 interface JitoResponse {
   jsonrpc: "2.0";
@@ -17,8 +18,9 @@ interface JitoResponse {
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://jito-api.mainnet.solana.com";
+  private readonly JITO_API_URL = "https://api.jito.wtf";
   private readonly MAX_TRANSACTIONS = 3;
+  private readonly REQUEST_TIMEOUT = 30000; // 30 seconds timeout
 
   constructor() {
     this.connection = connection;
@@ -118,6 +120,27 @@ class JitoService {
     return `jito-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  private async checkJitoApiHealth(): Promise<boolean> {
+    try {
+      const response = await fetch(this.JITO_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "getHealth",
+          params: [],
+          id: this.generateRequestId()
+        }),
+        signal: AbortSignal.timeout(5000) // 5 second timeout for health check
+      });
+      
+      return response.ok;
+    } catch (error) {
+      console.error("Jito API health check failed:", error);
+      return false;
+    }
+  }
+
   async submitBundle(transactions: Transaction[]): Promise<any> {
     const bundleValidation = this.validateBundleConstraints(transactions);
     if (!bundleValidation.isValid) {
@@ -125,6 +148,12 @@ class JitoService {
     }
 
     try {
+      console.log("Checking Jito API health...");
+      const isHealthy = await this.checkJitoApiHealth();
+      if (!isHealthy) {
+        throw new Error("Jito API is currently unavailable");
+      }
+
       console.log("Preparing transactions for bundle submission");
       
       const bundleWithAssertions: Transaction[] = [];
@@ -166,31 +195,53 @@ class JitoService {
 
       console.log("Request payload:", JSON.stringify(requestBody, null, 2));
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
+
       const response = await fetch(this.JITO_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`Failed to submit bundle: ${await response.text()} (${response.status})`);
+        const errorText = await response.text();
+        console.error("Jito API error response:", errorText);
+        toast.error(`Failed to submit bundle: ${errorText}`);
+        throw new Error(`Failed to submit bundle: ${errorText} (${response.status})`);
       }
 
       const result: JitoResponse = await response.json();
 
       if (result.error) {
+        console.error("Jito API returned error:", result.error);
+        toast.error(`Jito API error: ${result.error.message}`);
         throw new Error(`Jito API error: ${result.error.message}`);
       }
 
       console.log("Bundle submitted successfully:", result);
+      toast.success("Bundle submitted successfully to Jito");
       return result.result;
     } catch (error) {
       console.error("Error submitting bundle:", error);
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          toast.error("Request to Jito API timed out");
+          throw new Error("Request to Jito API timed out");
+        }
+        toast.error(error.message);
+      } else {
+        toast.error("An unexpected error occurred while submitting the bundle");
+      }
       throw error;
     }
   }
 }
 
 export const jitoService = new JitoService();
+
