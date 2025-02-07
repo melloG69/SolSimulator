@@ -5,30 +5,18 @@ import process from 'process';
 import util from 'util';
 import EventEmitter from 'events';
 
-// First, set up Buffer globally
-globalThis.Buffer = Buffer;
-
-// Then set up process
+// First, set up Buffer globally with proper type assertion
 if (typeof window !== 'undefined') {
-  // @ts-ignore
-  window.process = process;
-  // @ts-ignore
-  window.global = window;
-}
-
-// Ensure Buffer is available on window
-if (typeof window !== 'undefined') {
-  window.Buffer = Buffer;
+  (window as any).Buffer = Buffer;
+  (window as any).process = process;
+  (window as any).global = window;
 }
 
 // Set up stream and related utilities
 if (typeof window !== 'undefined') {
-  // @ts-ignore
-  window.Stream = stream.Stream;
-  // @ts-ignore
-  window.util = util;
-  // @ts-ignore
-  window.EventEmitter = EventEmitter;
+  (window as any).Stream = stream.Stream;
+  (window as any).util = util;
+  (window as any).EventEmitter = EventEmitter;
 }
 
 export { Buffer };
