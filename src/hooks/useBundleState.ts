@@ -7,24 +7,31 @@ import { toast } from "sonner";
 export type SimulationStatus = 'idle' | 'success' | 'failed';
 export type ExecutionStatus = 'idle' | 'success' | 'failed';
 
+export interface SimulationResult {
+  success: boolean;
+  message?: string;
+}
+
 export const useBundleState = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [signatures, setSignatures] = useState<string[]>([]);
+  const [simulationResults, setSimulationResults] = useState<SimulationResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState<SimulationStatus>('idle');
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('idle');
   const { connected, connecting } = useWallet();
 
-  // Reset states when wallet disconnects
   useEffect(() => {
     if (!connected && !connecting) {
       setTransactions([]);
+      setSignatures([]);
+      setSimulationResults([]);
       setSimulationStatus('idle');
       setExecutionStatus('idle');
       toast.info('Wallet disconnected. Please connect your wallet to continue.');
     }
   }, [connected, connecting]);
 
-  // Show connecting state
   useEffect(() => {
     if (connecting) {
       toast.info('Connecting to wallet...');
@@ -34,6 +41,10 @@ export const useBundleState = () => {
   return {
     transactions,
     setTransactions,
+    signatures,
+    setSignatures,
+    simulationResults,
+    setSimulationResults,
     loading,
     setLoading,
     simulationStatus,

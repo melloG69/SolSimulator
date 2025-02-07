@@ -4,6 +4,7 @@ import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
 import { setWalletContext, createBundle, updateBundleStatus } from "@/utils/supabaseUtils";
 import { connection } from "@/lib/solana";
+import { SimulationResult } from "./useBundleState";
 
 export const useBundleOperations = () => {
   const { toast } = useToast();
@@ -39,14 +40,14 @@ export const useBundleOperations = () => {
     publicKey: string,
     setLoading: (loading: boolean) => void,
     setSimulationStatus: (status: 'idle' | 'success' | 'failed') => void
-  ) => {
+  ): Promise<SimulationResult[]> => {
     if (transactions.length === 0) {
       toast({
         title: "Error",
         description: "No transactions to simulate",
         variant: "destructive",
       });
-      return;
+      return [];
     }
 
     setLoading(true);
@@ -76,7 +77,7 @@ export const useBundleOperations = () => {
           description: "Malicious activity detected in the bundle",
           variant: "destructive",
         });
-        return;
+        return transactions.map(() => ({ success: false, message: "Validation failed" }));
       }
 
       setSimulationStatus('success');
@@ -86,6 +87,8 @@ export const useBundleOperations = () => {
         title: "Simulation Complete",
         description: "Bundle has been successfully simulated",
       });
+
+      return transactions.map(() => ({ success: true }));
     } catch (error) {
       console.error("Simulation error:", error);
       setSimulationStatus('failed');
@@ -94,6 +97,10 @@ export const useBundleOperations = () => {
         description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+      return transactions.map(() => ({ 
+        success: false, 
+        message: error instanceof Error ? error.message : "Unknown error occurred" 
+      }));
     } finally {
       setLoading(false);
     }
@@ -105,14 +112,14 @@ export const useBundleOperations = () => {
     signTransaction: ((transaction: Transaction) => Promise<Transaction>) | undefined,
     setLoading: (loading: boolean) => void,
     setExecutionStatus: (status: 'idle' | 'success' | 'failed') => void
-  ) => {
+  ): Promise<string[]> => {
     if (!signTransaction) {
       toast({
         title: "Error",
         description: "Please connect your wallet first",
         variant: "destructive",
       });
-      return;
+      return [];
     }
 
     if (transactions.length === 0) {
@@ -121,7 +128,7 @@ export const useBundleOperations = () => {
         description: "No transactions to execute",
         variant: "destructive",
       });
-      return;
+      return [];
     }
 
     setLoading(true);
@@ -140,18 +147,19 @@ export const useBundleOperations = () => {
         synchronizedTransactions.map(tx => signTransaction(tx))
       );
 
-      // Verify blockhash persists after signing
       verifyBlockhash(signedTransactions);
       console.log("Signed transactions verified, submitting to Jito...");
 
-      // Pass signed transactions directly without reconstruction
-      await jitoService.submitBundle(signedTransactions);
+      const result = await jitoService.submitBundle(signedTransactions);
+      const signatures = result.signatures || [];
 
       setExecutionStatus('success');
       toast({
         title: "Success",
         description: "Bundle executed successfully via Jito",
       });
+
+      return signatures;
     } catch (error) {
       console.error("Execution error:", error);
       setExecutionStatus('failed');
@@ -160,6 +168,7 @@ export const useBundleOperations = () => {
         description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+      return [];
     } finally {
       setLoading(false);
     }

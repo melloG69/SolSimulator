@@ -1,6 +1,5 @@
 
 import { useCallback } from "react";
-import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useBundleState } from "@/hooks/useBundleState";
@@ -15,6 +14,10 @@ const BundleBuilder = () => {
   const {
     transactions,
     setTransactions,
+    signatures,
+    setSignatures,
+    simulationResults,
+    setSimulationResults,
     loading,
     setLoading,
     simulationStatus,
@@ -43,24 +46,30 @@ const BundleBuilder = () => {
 
   const handleSimulate = useCallback(async () => {
     if (!publicKey) return;
-    await simulateBundle(
+    const results = await simulateBundle(
       transactions,
       publicKey.toString(),
       setLoading,
       setSimulationStatus
     );
-  }, [transactions, publicKey, setLoading, setSimulationStatus, simulateBundle]);
+    if (results) {
+      setSimulationResults(results);
+    }
+  }, [transactions, publicKey, setLoading, setSimulationStatus, simulateBundle, setSimulationResults]);
 
   const handleExecute = useCallback(async () => {
     if (!publicKey) return;
-    await executeBundle(
+    const sigs = await executeBundle(
       transactions,
       publicKey.toString(),
       signTransaction,
       setLoading,
       setExecutionStatus
     );
-  }, [transactions, publicKey, signTransaction, setLoading, setExecutionStatus, executeBundle]);
+    if (sigs) {
+      setSignatures(sigs);
+    }
+  }, [transactions, publicKey, signTransaction, setLoading, setExecutionStatus, executeBundle, setSignatures]);
 
   return (
     <div className="container mx-auto p-4">
@@ -89,6 +98,8 @@ const BundleBuilder = () => {
               <TransactionList 
                 transactions={transactions}
                 executionStatus={executionStatus}
+                signatures={signatures}
+                simulationResults={simulationResults}
               />
               <TransactionControls
                 onAddTransaction={handleAddTransaction}
