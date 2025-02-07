@@ -10,7 +10,7 @@ import {
 } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { useToast } from "@/hooks/use-toast";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, createInitializeAccountInstruction } from "@solana/spl-token";
 
 export type MaliciousType = 'compute' | 'balance' | 'ownership' | 'data';
 
@@ -46,36 +46,43 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
           maliciousTransaction.add(
             SystemProgram.transfer({
               fromPubkey: publicKey,
-              toPubkey: PublicKey.default,
-              lamports: balance * 2,
+              toPubkey: new PublicKey('11111111111111111111111111111111'),
+              lamports: balance * 2, // Attempting to transfer more than available
             })
           );
           break;
 
         case 'ownership':
           console.log("Creating ownership attack transaction");
+          // Create a malicious ownership attack by attempting to initialize
+          // a token account with incorrect owner
+          const maliciousOwner = new PublicKey('11111111111111111111111111111111');
           maliciousTransaction.add(
             new TransactionInstruction({
               keys: [
                 { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: true },
+                { pubkey: maliciousOwner, isSigner: false, isWritable: false },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
               ],
-              programId: SystemProgram.programId,
-              data: Buffer.from([2]),
+              programId: TOKEN_PROGRAM_ID,
+              // Attempting to create invalid token instruction
+              data: Buffer.from([1]), 
             })
           );
           break;
 
         case 'data':
           console.log("Creating data manipulation attack transaction");
+          // Attempt to manipulate system program data (which should fail)
           maliciousTransaction.add(
             new TransactionInstruction({
               keys: [
                 { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: true }
+                { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: true },
               ],
               programId: SystemProgram.programId,
-              data: Buffer.from([1, 2, 3, 4]),
+              // Invalid system program instruction
+              data: Buffer.from([255, 255, 255, 255]), 
             })
           );
           break;
