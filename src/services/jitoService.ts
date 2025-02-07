@@ -1,4 +1,3 @@
-
 import { Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
@@ -17,9 +16,9 @@ interface JitoResponse {
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://jito-api.devnet.solana.com";
-  private readonly MAX_TRANSACTIONS = 5;
-  private readonly MAX_COMPUTE_UNITS = 1_400_000;
+  private readonly JITO_API_URL = "https://jito-api.mainnet.solana.com";
+  private readonly MAX_TRANSACTIONS = 3; // Reduced for mainnet safety
+  private readonly MAX_COMPUTE_UNITS = 1_200_000; // Adjusted for mainnet
 
   constructor() {
     this.connection = connection;
@@ -35,7 +34,7 @@ class JitoService {
         console.log("Validating compute units:", units);
         
         if (units > this.MAX_COMPUTE_UNITS) {
-          console.error("Malicious compute unit limit detected:", units);
+          console.error("Excessive compute unit limit detected:", units);
           return false;
         }
       }
@@ -95,30 +94,26 @@ class JitoService {
     }
 
     try {
-      // Create a new array for transactions with assertions
       const transactionsWithAssertions: Transaction[] = [];
       
-      // Validate bundle constraints first
       const bundleValidation = this.validateBundleConstraints(transactions);
       if (!bundleValidation.isValid) {
         console.error("Bundle validation failed:", bundleValidation.error);
         return false;
       }
 
-      // Default assertion strategy
+      // Mainnet-specific assertion strategy
       const strategy = {
-        balanceTolerance: 2,
+        balanceTolerance: 1, // Stricter tolerance for mainnet
         requireOwnerMatch: true,
         requireDelegateMatch: true,
         requireDataMatch: true
       };
 
-      // Process each transaction and build assertions
       for (const tx of transactions) {
-        // Check compute units in all instructions
         for (const instruction of tx.instructions) {
           if (!this.validateComputeUnits(instruction)) {
-            console.error("Transaction contains malicious compute unit settings");
+            console.error("Transaction contains excessive compute unit settings");
             return false;
           }
         }
@@ -131,19 +126,18 @@ class JitoService {
           return false;
         }
 
-        // Add both the original transaction and its assertion
         transactionsWithAssertions.push(tx);
         assertionResult.assertionTransaction.feePayer = tx.feePayer;
         transactionsWithAssertions.push(assertionResult.assertionTransaction);
       }
 
-      // Simulate the entire bundle with assertions
+      // Simulate with mainnet configuration
       for (const tx of transactionsWithAssertions) {
-        console.log("Simulating transaction:", tx);
+        console.log("Simulating transaction on mainnet:", tx);
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
-          console.error("Transaction validation failed:", simulation.value.err);
+          console.error("Transaction validation failed on mainnet:", simulation.value.err);
           return false;
         }
       }
@@ -151,7 +145,7 @@ class JitoService {
       console.log("All transactions validated successfully with Lighthouse assertions");
       return true;
     } catch (error) {
-      console.error("Error validating transactions:", error);
+      console.error("Error validating transactions on mainnet:", error);
       return false;
     }
   }
@@ -167,11 +161,10 @@ class JitoService {
     }
 
     try {
-      console.log("Preparing transactions for bundle submission");
+      console.log("Preparing transactions for mainnet bundle submission");
       
-      // Build assertions for each transaction
       const strategy = {
-        balanceTolerance: 2,
+        balanceTolerance: 1,
         requireOwnerMatch: true,
         requireDelegateMatch: true,
         requireDataMatch: true
@@ -179,14 +172,12 @@ class JitoService {
 
       const bundleWithAssertions: Transaction[] = [];
       
-      // Add assertions for each transaction
       for (const tx of transactions) {
         const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
         if (!assertionResult.success || !assertionResult.assertionTransaction) {
           throw new Error(`Failed to build assertions: ${assertionResult.failureReason}`);
         }
         
-        // Add transaction followed by its assertion
         bundleWithAssertions.push(tx);
         assertionResult.assertionTransaction.feePayer = tx.feePayer;
         bundleWithAssertions.push(assertionResult.assertionTransaction);
@@ -194,7 +185,7 @@ class JitoService {
 
       const serializedTxs = bundleWithAssertions.map(tx => {
         if (!tx.feePayer) {
-          throw new Error("Transaction fee payer required");
+          throw new Error("Transaction fee payer required for mainnet");
         }
         const serialized = tx.serialize();
         return Buffer.from(serialized).toString('base64');
@@ -202,7 +193,7 @@ class JitoService {
 
       const requestId = this.generateRequestId();
       
-      console.log("Submitting bundle to Jito API:", this.JITO_API_URL);
+      console.log("Submitting bundle to Jito mainnet API:", this.JITO_API_URL);
       
       const requestBody = {
         jsonrpc: "2.0",
@@ -214,7 +205,7 @@ class JitoService {
         id: requestId
       };
 
-      console.log("Request payload:", JSON.stringify(requestBody, null, 2));
+      console.log("Mainnet request payload:", JSON.stringify(requestBody, null, 2));
       
       const response = await fetch(this.JITO_API_URL, {
         method: 'POST',
@@ -224,33 +215,20 @@ class JitoService {
         body: JSON.stringify(requestBody),
       });
 
-      const responseText = await response.text();
-      console.log("Raw response:", responseText);
-
       if (!response.ok) {
-        console.error("Bundle submission failed with status:", response.status);
-        console.error("Error response:", responseText);
-        throw new Error(`Failed to submit bundle: ${responseText} (${response.status})`);
+        throw new Error(`Failed to submit bundle to mainnet: ${await response.text()} (${response.status})`);
       }
 
-      let result: JitoResponse;
-      try {
-        result = JSON.parse(responseText);
-      } catch (e) {
-        console.error("Failed to parse JSON response:", e);
-        throw new Error("Invalid JSON response from Jito API");
-      }
+      const result: JitoResponse = await response.json();
 
       if (result.error) {
-        console.error("Jito API returned error:", result.error);
-        throw new Error(`Jito API error: ${result.error.message}`);
+        throw new Error(`Jito mainnet API error: ${result.error.message}`);
       }
 
-      console.log("Bundle submitted successfully:", result);
-      
+      console.log("Bundle submitted successfully to mainnet:", result);
       return result.result;
     } catch (error) {
-      console.error("Error submitting bundle:", error);
+      console.error("Error submitting bundle to mainnet:", error);
       throw error;
     }
   }

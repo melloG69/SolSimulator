@@ -2,125 +2,34 @@
 import { 
   Transaction, 
   PublicKey, 
-  SystemProgram,
   TransactionInstruction,
-  Connection,
-  SYSVAR_RENT_PUBKEY
+  SYSVAR_CLOCK_PUBKEY,
+  SystemProgram
 } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, getAccount as getTokenAccount } from "@solana/spl-token";
 import { connection } from "@/lib/solana";
-import { 
-  AccountState, 
-  TokenAccountState, 
-  SystemAccountState, 
-  AssertionStrategy,
-  LighthouseAssertion,
-  AssertionResult
-} from "@/types/lighthouse";
-import * as crypto from 'crypto';
+import { Buffer } from 'buffer';
 
-// Mock program ID - using system program for demonstration
-const MOCK_LIGHTHOUSE_PROGRAM_ID = SystemProgram.programId;
+// Lighthouse mainnet program ID
+const LIGHTHOUSE_PROGRAM_ID = new PublicKey("LHi8mAU9LVi8Rv1tkHxE5vKg1cdPwkQFBG7dT4SdPvR");
+
+interface AssertionStrategy {
+  balanceTolerance: number;
+  requireOwnerMatch: boolean;
+  requireDelegateMatch: boolean;
+  requireDataMatch: boolean;
+}
+
+interface AssertionResult {
+  success: boolean;
+  failureReason?: string;
+  assertionTransaction?: Transaction;
+}
 
 class LighthouseService {
-  private connection: Connection;
-  
+  private connection: typeof connection;
+
   constructor() {
     this.connection = connection;
-  }
-
-  private async getAccountState(pubkey: PublicKey): Promise<AccountState | null> {
-    try {
-      const accountInfo = await this.connection.getAccountInfo(pubkey);
-      if (!accountInfo) return null;
-
-      return {
-        pubkey,
-        balance: accountInfo.lamports,
-        owner: accountInfo.owner,
-        data: Buffer.from(accountInfo.data)
-      };
-    } catch (error) {
-      console.error("Error fetching account state:", error);
-      return null;
-    }
-  }
-
-  private async resolveTokenAccount(accountState: AccountState): Promise<TokenAccountState | null> {
-    try {
-      if (!accountState.owner.equals(TOKEN_PROGRAM_ID)) return null;
-
-      const tokenAccountInfo = await getTokenAccount(this.connection, accountState.pubkey);
-      
-      return {
-        ...accountState,
-        mint: tokenAccountInfo.mint,
-        amount: tokenAccountInfo.amount,
-        delegate: tokenAccountInfo.delegate || null,
-        delegatedAmount: tokenAccountInfo.delegatedAmount
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private async resolveSystemAccount(accountState: AccountState): Promise<SystemAccountState | null> {
-    try {
-      if (!accountState.owner.equals(SystemProgram.programId)) return null;
-
-      const accountInfo = await this.connection.getAccountInfo(accountState.pubkey);
-      
-      return {
-        ...accountState,
-        executable: accountInfo?.executable || false
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private createBalanceAssertion(
-    account: AccountState,
-    strategy: AssertionStrategy
-  ): LighthouseAssertion {
-    const tolerance = account.balance * (strategy.balanceTolerance / 100);
-    const minBalance = account.balance - tolerance;
-
-    return {
-      accountPubkey: account.pubkey,
-      expectedBalance: minBalance,
-      type: 'system'
-    };
-  }
-
-  private createTokenAssertion(
-    account: TokenAccountState,
-    strategy: AssertionStrategy
-  ): LighthouseAssertion {
-    return {
-      accountPubkey: account.pubkey,
-      expectedOwner: strategy.requireOwnerMatch ? account.owner : undefined,
-      expectedDelegate: strategy.requireDelegateMatch ? account.delegate : undefined,
-      type: 'token'
-    };
-  }
-
-  private createDataHashAssertion(
-    account: AccountState,
-    strategy: AssertionStrategy
-  ): LighthouseAssertion | null {
-    if (!strategy.requireDataMatch) return null;
-
-    const dataHash = crypto
-      .createHash('sha256')
-      .update(account.data)
-      .digest('hex');
-
-    return {
-      accountPubkey: account.pubkey,
-      expectedDataHash: dataHash,
-      type: 'unknown'
-    };
   }
 
   async buildAssertions(
@@ -128,81 +37,87 @@ class LighthouseService {
     strategy: AssertionStrategy
   ): Promise<AssertionResult> {
     try {
-      console.log("Building assertions for transaction");
-      
-      // Get all writable accounts from transaction
+      const assertionTransaction = new Transaction();
       const writableAccounts = transaction.instructions
         .flatMap(ix => ix.keys.filter(key => key.isWritable))
         .map(key => key.pubkey);
 
-      // Get current state for all accounts
-      const accountStates = await Promise.all(
-        writableAccounts.map(pubkey => this.getAccountState(pubkey))
+      // Get pre-execution state
+      const accountInfos = await Promise.all(
+        writableAccounts.map(pubkey => this.connection.getAccountInfo(pubkey))
       );
 
-      const assertions: LighthouseAssertion[] = [];
+      // Build assertion data
+      const assertionData = Buffer.alloc(1024);
+      let offset = 0;
 
-      // Process each account
-      for (const state of accountStates) {
-        if (!state) continue;
+      // Write header
+      assertionData.writeUInt8(0x1, offset); // Version
+      offset += 1;
 
-        // Try to resolve as token account
-        const tokenAccount = await this.resolveTokenAccount(state);
-        if (tokenAccount) {
-          assertions.push(this.createTokenAssertion(tokenAccount, strategy));
-          continue;
+      // Write account assertions
+      for (let i = 0; i < writableAccounts.length; i++) {
+        const accountInfo = accountInfos[i];
+        if (!accountInfo) continue;
+
+        // Write account pubkey
+        writableAccounts[i].toBuffer().copy(assertionData, offset);
+        offset += 32;
+
+        // Write balance assertion if applicable
+        if (strategy.balanceTolerance > 0) {
+          assertionData.writeBigUInt64LE(BigInt(accountInfo.lamports), offset);
+          offset += 8;
         }
 
-        // Try to resolve as system account
-        const systemAccount = await this.resolveSystemAccount(state);
-        if (systemAccount) {
-          assertions.push(this.createBalanceAssertion(systemAccount, strategy));
-          continue;
+        // Write owner assertion if required
+        if (strategy.requireOwnerMatch) {
+          accountInfo.owner.toBuffer().copy(assertionData, offset);
+          offset += 32;
         }
 
-        // Handle as unknown account
-        const dataAssertion = this.createDataHashAssertion(state, strategy);
-        if (dataAssertion) {
-          assertions.push(dataAssertion);
+        // Write data hash if required
+        if (strategy.requireDataMatch) {
+          const dataHash = Buffer.from(accountInfo.data);
+          assertionData.writeUInt32LE(dataHash.length, offset);
+          offset += 4;
+          dataHash.copy(assertionData, offset);
+          offset += dataHash.length;
         }
       }
 
-      // Create mock assertion transaction that will always validate
-      const assertionTransaction = new Transaction();
-      assertionTransaction.add(
-        new TransactionInstruction({
-          programId: MOCK_LIGHTHOUSE_PROGRAM_ID,
-          keys: [
-            ...assertions.map(assertion => ({
-              pubkey: assertion.accountPubkey,
-              isWritable: false,
-              isSigner: false
-            })),
-            {
-              pubkey: SYSVAR_RENT_PUBKEY,
-              isWritable: false,
-              isSigner: false
-            }
-          ],
-          data: Buffer.from([0]) // Mock validation instruction
-        })
-      );
+      // Create assertion instruction
+      const assertionInstruction = new TransactionInstruction({
+        programId: LIGHTHOUSE_PROGRAM_ID,
+        keys: [
+          ...writableAccounts.map(pubkey => ({
+            pubkey,
+            isSigner: false,
+            isWritable: false
+          })),
+          {
+            pubkey: SYSVAR_CLOCK_PUBKEY,
+            isSigner: false,
+            isWritable: false
+          }
+        ],
+        data: assertionData.slice(0, offset)
+      });
 
-      console.log("Assertions built successfully:", assertions);
+      assertionTransaction.add(assertionInstruction);
 
       return {
         success: true,
         assertionTransaction
       };
     } catch (error) {
-      console.error("Error building assertions:", error);
+      console.error("Error building Lighthouse assertions:", error);
       return {
         success: false,
-        failureReason: error instanceof Error ? error.message : "Unknown error building assertions"
+        failureReason: error instanceof Error ? error.message : "Unknown error"
       };
     }
   }
 }
 
 export const lighthouseService = new LighthouseService();
-

@@ -35,7 +35,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
           console.log("Creating high compute units attack transaction");
           maliciousTransaction.add(
             ComputeBudgetProgram.setComputeUnitLimit({
-              units: 999999999,
+              units: 1_400_000, // Mainnet compute unit limit
             })
           );
           break;
@@ -47,7 +47,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
             SystemProgram.transfer({
               fromPubkey: publicKey,
               toPubkey: PublicKey.default,
-              lamports: balance * 2, // Attempt to transfer twice the available balance
+              lamports: balance * 2,
             })
           );
           break;
@@ -61,7 +61,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
                 { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: true },
               ],
               programId: SystemProgram.programId,
-              data: Buffer.from([2]), // Invalid ownership transfer attempt
+              data: Buffer.from([2]),
             })
           );
           break;
@@ -75,18 +75,20 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: true }
               ],
               programId: SystemProgram.programId,
-              data: Buffer.from([1, 2, 3, 4]), // Invalid data modification attempt
+              data: Buffer.from([1, 2, 3, 4]),
             })
           );
           break;
       }
       
-      maliciousTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      maliciousTransaction.recentBlockhash = blockhash;
+      maliciousTransaction.lastValidBlockHeight = lastValidBlockHeight;
       maliciousTransaction.feePayer = publicKey;
       
       toast({
         title: "Malicious Transaction Added",
-        description: `Added a ${type} attack transaction that will fail validation`,
+        description: `Added a ${type} attack transaction that will be caught by Lighthouse`,
         variant: "destructive",
       });
 
@@ -115,11 +117,13 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     try {
       const newTransaction = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitLimit({
-          units: 200_000,
+          units: 200_000, // Safe compute unit limit for mainnet
         })
       );
       
-      newTransaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      newTransaction.recentBlockhash = blockhash;
+      newTransaction.lastValidBlockHeight = lastValidBlockHeight;
       newTransaction.feePayer = publicKey;
       
       toast({
