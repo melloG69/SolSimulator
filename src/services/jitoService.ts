@@ -130,14 +130,7 @@ class JitoService {
       const bundleWithAssertions: Transaction[] = [];
       
       for (const tx of transactions) {
-        const strategy = {
-          balanceTolerance: 5,
-          requireOwnerMatch: false,
-          requireDelegateMatch: false,
-          requireDataMatch: false
-        };
-
-        const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
+        const assertionResult = await lighthouseService.buildAssertions(tx);
         if (!assertionResult.success) {
           throw new Error(`Failed to build assertions: ${assertionResult.failureReason}`);
         }
