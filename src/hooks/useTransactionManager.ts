@@ -24,7 +24,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     try {
       const maliciousTransaction = new Transaction();
       
-      // Add a system transfer to ensure there's a writable account
+      // Add a system transfer
       maliciousTransaction.add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
@@ -73,19 +73,12 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     try {
       const newTransaction = new Transaction();
       
-      // Add a minimal SOL transfer
+      // Add a minimal SOL transfer without compute units
       newTransaction.add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
           toPubkey: publicKey,
           lamports: 1000,
-        })
-      );
-      
-      // Add reasonable compute units
-      newTransaction.add(
-        ComputeBudgetProgram.setComputeUnitLimit({
-          units: 200_000,
         })
       );
       
