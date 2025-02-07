@@ -3,9 +3,25 @@ import { Transaction } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
 import { setWalletContext, createBundle, updateBundleStatus } from "@/utils/supabaseUtils";
+import { connection } from "@/lib/solana";
 
 export const useBundleOperations = () => {
   const { toast } = useToast();
+
+  const synchronizeTransactions = async (transactions: Transaction[]) => {
+    try {
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      
+      return transactions.map(tx => {
+        tx.recentBlockhash = blockhash;
+        tx.lastValidBlockHeight = lastValidBlockHeight;
+        return tx;
+      });
+    } catch (error) {
+      console.error("Error synchronizing transactions:", error);
+      throw error;
+    }
+  };
 
   const simulateBundle = async (
     transactions: Transaction[],
@@ -34,7 +50,11 @@ export const useBundleOperations = () => {
       await createBundle(bundleId, publicKey);
       console.log('Bundle created successfully, proceeding with validation');
 
-      const isValid = await jitoService.validateTransactions(transactions);
+      // Synchronize all transactions with the same blockhash
+      const synchronizedTransactions = await synchronizeTransactions(transactions);
+      console.log('Transactions synchronized with same blockhash');
+
+      const isValid = await jitoService.validateTransactions(synchronizedTransactions);
       
       if (!isValid) {
         setSimulationStatus('failed');
@@ -99,9 +119,12 @@ export const useBundleOperations = () => {
     try {
       await setWalletContext(publicKey);
       
+      // Synchronize all transactions before signing
+      const synchronizedTransactions = await synchronizeTransactions(transactions);
+      
       console.log("Signing transactions...");
       const signedTransactions = await Promise.all(
-        transactions.map(tx => signTransaction(tx))
+        synchronizedTransactions.map(tx => signTransaction(tx))
       );
 
       console.log("Submitting bundle to Jito...");

@@ -10,7 +10,7 @@ import {
 } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { useToast } from "@/hooks/use-toast";
-import { TOKEN_PROGRAM_ID, createInitializeAccountInstruction } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 export type MaliciousType = 'compute' | 'balance' | 'ownership' | 'data';
 
@@ -35,7 +35,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
           console.log("Creating high compute units attack transaction");
           maliciousTransaction.add(
             ComputeBudgetProgram.setComputeUnitLimit({
-              units: 1_400_000, // Mainnet compute unit limit
+              units: 1_400_000,
             })
           );
           break;
@@ -47,50 +47,40 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
             SystemProgram.transfer({
               fromPubkey: publicKey,
               toPubkey: new PublicKey('11111111111111111111111111111111'),
-              lamports: balance * 2, // Attempting to transfer more than available
+              lamports: balance * 2,
             })
           );
           break;
 
         case 'ownership':
           console.log("Creating ownership attack transaction");
-          // Create a malicious ownership attack by attempting to initialize
-          // a token account with incorrect owner
-          const maliciousOwner = new PublicKey('11111111111111111111111111111111');
           maliciousTransaction.add(
             new TransactionInstruction({
               keys: [
                 { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: maliciousOwner, isSigner: false, isWritable: false },
-                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: true },
               ],
-              programId: TOKEN_PROGRAM_ID,
-              // Attempting to create invalid token instruction
-              data: Buffer.from([1]), 
+              programId: SystemProgram.programId,
+              data: Buffer.from([2]),
             })
           );
           break;
 
         case 'data':
           console.log("Creating data manipulation attack transaction");
-          // Attempt to manipulate system program data (which should fail)
           maliciousTransaction.add(
             new TransactionInstruction({
               keys: [
                 { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: true }
               ],
               programId: SystemProgram.programId,
-              // Invalid system program instruction
-              data: Buffer.from([255, 255, 255, 255]), 
+              data: Buffer.from([1, 2, 3, 4]),
             })
           );
           break;
       }
       
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-      maliciousTransaction.recentBlockhash = blockhash;
-      maliciousTransaction.lastValidBlockHeight = lastValidBlockHeight;
       maliciousTransaction.feePayer = publicKey;
       
       toast({
@@ -124,13 +114,10 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     try {
       const newTransaction = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitLimit({
-          units: 200_000, // Safe compute unit limit for mainnet
+          units: 200_000,
         })
       );
       
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-      newTransaction.recentBlockhash = blockhash;
-      newTransaction.lastValidBlockHeight = lastValidBlockHeight;
       newTransaction.feePayer = publicKey;
       
       toast({
