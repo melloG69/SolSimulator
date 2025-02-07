@@ -11,15 +11,26 @@ export const useBundleOperations = () => {
   const synchronizeTransactions = async (transactions: Transaction[]) => {
     try {
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      console.log('Synchronizing transactions with blockhash:', blockhash);
       
       return transactions.map(tx => {
         tx.recentBlockhash = blockhash;
         tx.lastValidBlockHeight = lastValidBlockHeight;
+        console.log('Transaction updated with blockhash:', tx.recentBlockhash);
         return tx;
       });
     } catch (error) {
       console.error("Error synchronizing transactions:", error);
       throw error;
+    }
+  };
+
+  const verifyBlockhash = (transactions: Transaction[]) => {
+    for (const tx of transactions) {
+      if (!tx.recentBlockhash) {
+        throw new Error('Transaction missing recentBlockhash after synchronization');
+      }
+      console.log('Verified blockhash for transaction:', tx.recentBlockhash);
     }
   };
 
@@ -50,9 +61,9 @@ export const useBundleOperations = () => {
       await createBundle(bundleId, publicKey);
       console.log('Bundle created successfully, proceeding with validation');
 
-      // Synchronize all transactions with the same blockhash
       const synchronizedTransactions = await synchronizeTransactions(transactions);
-      console.log('Transactions synchronized with same blockhash');
+      verifyBlockhash(synchronizedTransactions);
+      console.log('Transactions synchronized and verified with blockhash');
 
       const isValid = await jitoService.validateTransactions(synchronizedTransactions);
       
@@ -118,19 +129,23 @@ export const useBundleOperations = () => {
     
     try {
       await setWalletContext(publicKey);
+      console.log('Starting bundle execution process');
       
-      // Synchronize all transactions before signing
       const synchronizedTransactions = await synchronizeTransactions(transactions);
+      verifyBlockhash(synchronizedTransactions);
+      console.log('Transactions synchronized and verified before signing');
       
       console.log("Signing transactions...");
       const signedTransactions = await Promise.all(
         synchronizedTransactions.map(tx => signTransaction(tx))
       );
 
-      console.log("Submitting bundle to Jito...");
-      await jitoService.submitBundle(
-        signedTransactions.map(tx => Transaction.from(tx.serialize()))
-      );
+      // Verify blockhash persists after signing
+      verifyBlockhash(signedTransactions);
+      console.log("Signed transactions verified, submitting to Jito...");
+
+      // Pass signed transactions directly without reconstruction
+      await jitoService.submitBundle(signedTransactions);
 
       setExecutionStatus('success');
       toast({

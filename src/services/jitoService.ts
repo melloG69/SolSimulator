@@ -178,6 +178,13 @@ class JitoService {
       const bundleWithAssertions: Transaction[] = [];
       
       for (const tx of transactions) {
+        if (!tx.recentBlockhash) {
+          const errorMessage = "Transaction missing recentBlockhash";
+          console.error(errorMessage);
+          toast.error(errorMessage);
+          throw new Error(errorMessage);
+        }
+
         const assertionResult = await lighthouseService.buildAssertions(tx);
         if (!assertionResult.success) {
           const errorMessage = `Failed to build assertions: ${assertionResult.failureReason}`;
@@ -200,8 +207,7 @@ class JitoService {
           toast.error(errorMessage);
           throw new Error(errorMessage);
         }
-        const serialized = tx.serialize();
-        return Buffer.from(serialized).toString('base64');
+        return Buffer.from(tx.serialize()).toString('base64');
       });
 
       console.log("Submitting bundle to Jito API");
@@ -235,4 +241,3 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
-
