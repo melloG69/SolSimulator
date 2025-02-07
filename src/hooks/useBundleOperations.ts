@@ -15,10 +15,15 @@ export const useBundleOperations = () => {
       console.log('Synchronizing transactions with blockhash:', blockhash);
       
       return transactions.map(tx => {
-        tx.recentBlockhash = blockhash;
-        tx.lastValidBlockHeight = lastValidBlockHeight;
-        console.log('Transaction updated with blockhash:', tx.recentBlockhash);
-        return tx;
+        // Create a new transaction to avoid mutation
+        const newTx = new Transaction();
+        newTx.recentBlockhash = blockhash;
+        newTx.lastValidBlockHeight = lastValidBlockHeight;
+        tx.instructions.forEach(ix => newTx.add(ix));
+        if (tx.feePayer) newTx.feePayer = tx.feePayer;
+        
+        console.log('Transaction updated with blockhash:', newTx.recentBlockhash);
+        return newTx;
       });
     } catch (error) {
       console.error("Error synchronizing transactions:", error);
@@ -138,15 +143,25 @@ export const useBundleOperations = () => {
       await setWalletContext(publicKey);
       console.log('Starting bundle execution process');
       
+      // First synchronize the transactions
       const synchronizedTransactions = await synchronizeTransactions(transactions);
       verifyBlockhash(synchronizedTransactions);
       console.log('Transactions synchronized and verified before signing');
       
+      // Sign the synchronized transactions
       console.log("Signing transactions...");
       const signedTransactions = await Promise.all(
-        synchronizedTransactions.map(tx => signTransaction(tx))
+        synchronizedTransactions.map(async tx => {
+          const signedTx = await signTransaction(tx);
+          // Verify blockhash persists after signing
+          if (!signedTx.recentBlockhash) {
+            throw new Error('Transaction lost blockhash during signing');
+          }
+          return signedTx;
+        })
       );
 
+      // Verify one final time before submission
       verifyBlockhash(signedTransactions);
       console.log("Signed transactions verified, submitting to Jito...");
 
@@ -179,3 +194,4 @@ export const useBundleOperations = () => {
     executeBundle
   };
 };
+

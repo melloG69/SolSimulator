@@ -46,15 +46,15 @@ class JitoService {
       };
     }
 
-    const firstTxSlot = transactions[0].lastValidBlockHeight;
-    const validSlot = transactions.every(tx => 
-      tx.lastValidBlockHeight === firstTxSlot
+    const firstTxBlockhash = transactions[0].recentBlockhash;
+    const validBlockhash = transactions.every(tx => 
+      tx.recentBlockhash === firstTxBlockhash
     );
 
-    if (!validSlot) {
+    if (!validBlockhash) {
       return {
         isValid: false,
-        error: "All transactions must be within the same slot boundary"
+        error: "All transactions must have the same recentBlockhash"
       };
     }
 
@@ -127,6 +127,11 @@ class JitoService {
       }
 
       for (const tx of transactions) {
+        if (!tx.recentBlockhash) {
+          console.error("Transaction missing recentBlockhash during validation");
+          return false;
+        }
+
         console.log("Building Lighthouse assertions for transaction");
         const assertionResult = await lighthouseService.buildAssertions(tx);
         
@@ -144,6 +149,7 @@ class JitoService {
 
         if (assertionResult.assertionTransaction) {
           assertionResult.assertionTransaction.feePayer = tx.feePayer;
+          assertionResult.assertionTransaction.recentBlockhash = tx.recentBlockhash;
           const assertionSimulation = await this.connection.simulateTransaction(
             assertionResult.assertionTransaction
           );
@@ -196,17 +202,19 @@ class JitoService {
         bundleWithAssertions.push(tx);
         if (assertionResult.assertionTransaction) {
           assertionResult.assertionTransaction.feePayer = tx.feePayer;
+          assertionResult.assertionTransaction.recentBlockhash = tx.recentBlockhash;
           bundleWithAssertions.push(assertionResult.assertionTransaction);
         }
       }
 
-      const serializedTxs = bundleWithAssertions.map(tx => {
-        if (!tx.feePayer) {
-          const errorMessage = "Transaction fee payer required";
-          console.error(errorMessage);
-          toast.error(errorMessage);
-          throw new Error(errorMessage);
+      console.log("Verifying final bundle before submission");
+      for (const tx of bundleWithAssertions) {
+        if (!tx.recentBlockhash || !tx.feePayer) {
+          throw new Error('Transaction missing required fields before serialization');
         }
+      }
+
+      const serializedTxs = bundleWithAssertions.map(tx => {
         return Buffer.from(tx.serialize()).toString('base64');
       });
 
@@ -241,3 +249,4 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
+
