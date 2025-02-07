@@ -16,14 +16,29 @@ interface JitoResponse {
   id: string | number;
 }
 
+type Region = 'global' | 'amsterdam' | 'frankfurt' | 'ny' | 'tokyo' | 'slc';
+
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://api.jito.wtf";
-  private readonly MAX_TRANSACTIONS = 3;
-  private readonly REQUEST_TIMEOUT = 30000; // 30 seconds timeout
+  private readonly MAX_TRANSACTIONS = 5; // Updated to Jito's max limit
+  private readonly REQUEST_TIMEOUT = 30000;
+  private readonly API_VERSION = 'v1';
+  private readonly REGIONS: Record<Region, string> = {
+    global: 'https://mainnet.block-engine.jito.wtf',
+    amsterdam: 'https://amsterdam.mainnet.block-engine.jito.wtf',
+    frankfurt: 'https://frankfurt.mainnet.block-engine.jito.wtf',
+    ny: 'https://ny.mainnet.block-engine.jito.wtf',
+    tokyo: 'https://tokyo.mainnet.block-engine.jito.wtf',
+    slc: 'https://slc.mainnet.block-engine.jito.wtf'
+  };
+  private currentRegion: Region = 'global';
 
   constructor() {
     this.connection = connection;
+  }
+
+  private getApiUrl(endpoint: 'bundles' | 'transactions'): string {
+    return `${this.REGIONS[this.currentRegion]}/api/${this.API_VERSION}/${endpoint}`;
   }
 
   private validateBundleConstraints(transactions: Transaction[]): { isValid: boolean; error?: string } {
@@ -64,6 +79,60 @@ class JitoService {
     return { isValid: true };
   }
 
+  private async makeRequest(endpoint: string, method: string, params: any[]): Promise<JitoResponse> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method,
+          params,
+          id: `jito-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error: ${response.status} - ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Request timeout for region ${this.currentRegion}`);
+      }
+      throw error;
+    }
+  }
+
+  private async tryWithRegionFailover<T>(operation: () => Promise<T>): Promise<T> {
+    const regions: Region[] = ['global', 'ny', 'frankfurt', 'amsterdam', 'tokyo', 'slc'];
+    let lastError: Error | null = null;
+
+    for (const region of regions) {
+      try {
+        this.currentRegion = region;
+        console.log(`Attempting operation with ${region} region`);
+        return await operation();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`Failed with region ${region}:`, error);
+        continue;
+      }
+    }
+
+    throw lastError || new Error('All regions failed');
+  }
+
   async validateTransactions(transactions: Transaction[]): Promise<boolean> {
     if (!transactions || transactions.length === 0) {
       console.log("No transactions to validate");
@@ -77,7 +146,6 @@ class JitoService {
         return false;
       }
 
-      // Process transactions in sequence
       for (const tx of transactions) {
         console.log("Building Lighthouse assertions for transaction");
         const assertionResult = await lighthouseService.buildAssertions(tx);
@@ -87,7 +155,6 @@ class JitoService {
           return false;
         }
 
-        // Simulate the transaction
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
@@ -116,25 +183,14 @@ class JitoService {
     }
   }
 
-  private generateRequestId(): string {
-    return `jito-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
   private async checkJitoApiHealth(): Promise<boolean> {
     try {
-      const response = await fetch(this.JITO_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "getHealth",
-          params: [],
-          id: this.generateRequestId()
-        }),
-        signal: AbortSignal.timeout(5000) // 5 second timeout for health check
-      });
-      
-      return response.ok;
+      const response = await this.makeRequest(
+        this.getApiUrl('bundles'),
+        'getHealth',
+        []
+      );
+      return !response.error;
     } catch (error) {
       console.error("Jito API health check failed:", error);
       return false;
@@ -142,12 +198,12 @@ class JitoService {
   }
 
   async submitBundle(transactions: Transaction[]): Promise<any> {
-    const bundleValidation = this.validateBundleConstraints(transactions);
-    if (!bundleValidation.isValid) {
-      throw new Error(bundleValidation.error);
-    }
+    return this.tryWithRegionFailover(async () => {
+      const bundleValidation = this.validateBundleConstraints(transactions);
+      if (!bundleValidation.isValid) {
+        throw new Error(bundleValidation.error);
+      }
 
-    try {
       console.log("Checking Jito API health...");
       const isHealthy = await this.checkJitoApiHealth();
       if (!isHealthy) {
@@ -179,69 +235,28 @@ class JitoService {
         return Buffer.from(serialized).toString('base64');
       });
 
-      const requestId = this.generateRequestId();
+      console.log(`Submitting bundle to Jito API (${this.currentRegion} region)`);
       
-      console.log("Submitting bundle to Jito API");
-      
-      const requestBody = {
-        jsonrpc: "2.0",
-        method: "sendBundle",
-        params: [{
+      const response = await this.makeRequest(
+        this.getApiUrl('bundles'),
+        'sendBundle',
+        [{
           transactions: serializedTxs,
           encoding: "base64",
-        }],
-        id: requestId
-      };
+        }]
+      );
 
-      console.log("Request payload:", JSON.stringify(requestBody, null, 2));
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
-
-      const response = await fetch(this.JITO_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Jito API error response:", errorText);
-        toast.error(`Failed to submit bundle: ${errorText}`);
-        throw new Error(`Failed to submit bundle: ${errorText} (${response.status})`);
+      if (response.error) {
+        console.error("Jito API returned error:", response.error);
+        toast.error(`Jito API error: ${response.error.message}`);
+        throw new Error(`Jito API error: ${response.error.message}`);
       }
 
-      const result: JitoResponse = await response.json();
-
-      if (result.error) {
-        console.error("Jito API returned error:", result.error);
-        toast.error(`Jito API error: ${result.error.message}`);
-        throw new Error(`Jito API error: ${result.error.message}`);
-      }
-
-      console.log("Bundle submitted successfully:", result);
-      toast.success("Bundle submitted successfully to Jito");
-      return result.result;
-    } catch (error) {
-      console.error("Error submitting bundle:", error);
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          toast.error("Request to Jito API timed out");
-          throw new Error("Request to Jito API timed out");
-        }
-        toast.error(error.message);
-      } else {
-        toast.error("An unexpected error occurred while submitting the bundle");
-      }
-      throw error;
-    }
+      console.log("Bundle submitted successfully:", response);
+      toast.success(`Bundle submitted successfully to Jito (${this.currentRegion} region)`);
+      return response.result;
+    });
   }
 }
 
 export const jitoService = new JitoService();
-
