@@ -1,4 +1,3 @@
-
 import { Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
@@ -17,8 +16,7 @@ interface JitoResponse {
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://api.devnet.solana.com";
-  private readonly JITO_BUNDLE_PATH = "/jito/v1/bundles";
+  private readonly JITO_API_URL = "https://jito-api.devnet.solana.com";  // Updated to Jito-specific endpoint
   private readonly MAX_TRANSACTIONS = 5;
   private readonly MAX_COMPUTE_UNITS = 1_400_000;
 
@@ -178,29 +176,22 @@ class JitoService {
       });
 
       const requestId = this.generateRequestId();
-      const bundleEndpoint = `${this.JITO_API_URL}${this.JITO_BUNDLE_PATH}`;
       
-      console.log("Submitting bundle to Jito API:", bundleEndpoint);
+      console.log("Submitting bundle to Jito API:", this.JITO_API_URL);
       
-      // Updated request body with correct method name and parameters format
       const requestBody = {
         jsonrpc: "2.0",
-        method: "jito_submitBundle",  // Updated method name with namespace
-        params: [                     // Updated params format to match Jito API
-          {
-            transactions: serializedTxs,
-            header: {
-              tip: 0,                 // Optional tip amount
-              recoveryMode: false     // Optional recovery mode flag
-            }
-          }
-        ],
+        method: "sendBundle",  // Updated to match Jito's API method name
+        params: [{
+          transactions: serializedTxs,
+          encoding: "base64",
+        }],
         id: requestId
       };
 
-      console.log("Request payload:", requestBody);
+      console.log("Request payload:", JSON.stringify(requestBody, null, 2));
       
-      const response = await fetch(bundleEndpoint, {
+      const response = await fetch(this.JITO_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -241,4 +232,3 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
-
