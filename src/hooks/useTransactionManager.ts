@@ -6,10 +6,7 @@ import {
   PublicKey, 
   SystemProgram,
 } from "@solana/web3.js";
-import { connection } from "@/lib/solana";
 import { useToast } from "@/hooks/use-toast";
-
-export type MaliciousType = 'compute';
 
 export const useTransactionManager = (publicKey: PublicKey | null) => {
   const { toast } = useToast();

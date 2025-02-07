@@ -1,16 +1,9 @@
 
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { MaliciousType } from "@/hooks/useTransactionManager";
 
 interface TransactionControlsProps {
   onAddTransaction: () => void;
-  onAddMaliciousTransaction: (type: MaliciousType) => void;
+  onAddMaliciousTransaction: () => void;
   disabled: boolean;
 }
 
@@ -33,7 +26,7 @@ export const TransactionControls = ({
         variant="outline"
         className="flex-1"
         disabled={disabled}
-        onClick={() => onAddMaliciousTransaction('compute')}
+        onClick={onAddMaliciousTransaction}
       >
         Add High Compute Attack
       </Button>
