@@ -6,7 +6,9 @@ import { lighthouseService } from "./lighthouseService";
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://api.devnet.jito.network";
+  private readonly JITO_API_URL = "https://testnet.block-engine.jito.wtf";
+  private readonly API_VERSION = "v1";
+  private readonly MAX_TRANSACTIONS = 5;
   private readonly MAX_COMPUTE_UNITS = 1_400_000;
 
   constructor() {
@@ -15,19 +17,13 @@ class JitoService {
 
   private validateComputeUnits(instruction: TransactionInstruction): boolean {
     try {
-      // Check if this is a ComputeBudget instruction
       const programId = instruction.programId.toBase58();
       if (programId === ComputeBudgetProgram.programId.toBase58()) {
-        // Decode the instruction data
         const dataView = Buffer.from(instruction.data);
-        
-        // First byte is instruction type, second byte starts the units
-        // Skip instruction type byte (first byte)
         const units = dataView.readUInt32LE(1);
         
         console.log("Validating compute units:", units);
         
-        // Check if units exceed maximum allowed
         if (units > this.MAX_COMPUTE_UNITS) {
           console.error("Malicious compute unit limit detected:", units);
           return false;
@@ -40,6 +36,39 @@ class JitoService {
     }
   }
 
+  private validateBundleConstraints(transactions: Transaction[]): { isValid: boolean; error?: string } {
+    // Check transaction count
+    if (transactions.length > this.MAX_TRANSACTIONS) {
+      return {
+        isValid: false,
+        error: `Bundle exceeds maximum transaction count (${this.MAX_TRANSACTIONS})`
+      };
+    }
+
+    // Check for empty bundle
+    if (transactions.length === 0) {
+      return {
+        isValid: false,
+        error: "Bundle cannot be empty"
+      };
+    }
+
+    // Validate slot boundaries
+    const firstTxSlot = transactions[0].lastValidBlockHeight;
+    const validSlot = transactions.every(tx => 
+      tx.lastValidBlockHeight === firstTxSlot
+    );
+
+    if (!validSlot) {
+      return {
+        isValid: false,
+        error: "All transactions must be within the same slot boundary"
+      };
+    }
+
+    return { isValid: true };
+  }
+
   async validateTransactions(transactions: Transaction[]): Promise<boolean> {
     if (!transactions || transactions.length === 0) {
       console.log("No transactions to validate");
@@ -47,16 +76,23 @@ class JitoService {
     }
 
     try {
+      // Validate bundle constraints first
+      const bundleValidation = this.validateBundleConstraints(transactions);
+      if (!bundleValidation.isValid) {
+        console.error("Bundle validation failed:", bundleValidation.error);
+        return false;
+      }
+
       // Default assertion strategy
       const strategy = {
-        balanceTolerance: 2, // 2% tolerance for balance changes
+        balanceTolerance: 2,
         requireOwnerMatch: true,
         requireDelegateMatch: true,
         requireDataMatch: true
       };
 
       for (const tx of transactions) {
-        // First check compute units in all instructions
+        // Check compute units in all instructions
         for (const instruction of tx.instructions) {
           if (!this.validateComputeUnits(instruction)) {
             console.error("Transaction contains malicious compute unit settings");
@@ -64,7 +100,6 @@ class JitoService {
           }
         }
 
-        // Build Lighthouse assertions
         console.log("Building Lighthouse assertions for transaction");
         const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
         
@@ -73,10 +108,8 @@ class JitoService {
           return false;
         }
 
-        // Add assertion transaction to bundle
         transactions.push(assertionResult.assertionTransaction);
 
-        // Simulate the transaction with assertions
         console.log("Simulating transaction with assertions:", tx);
         const simulation = await this.connection.simulateTransaction(tx);
         
@@ -95,8 +128,10 @@ class JitoService {
   }
 
   async submitBundle(transactions: Transaction[]): Promise<any> {
-    if (!transactions || transactions.length === 0) {
-      throw new Error("No transactions provided for bundle submission");
+    // Validate bundle constraints
+    const bundleValidation = this.validateBundleConstraints(transactions);
+    if (!bundleValidation.isValid) {
+      throw new Error(bundleValidation.error);
     }
 
     try {
@@ -106,16 +141,20 @@ class JitoService {
         return Buffer.from(serialized).toString('base64');
       });
 
-      const bundleEndpoint = `${this.JITO_API_URL}/bundle`;
+      const bundleEndpoint = `${this.JITO_API_URL}/api/${this.API_VERSION}/bundles`;
       console.log("Submitting bundle to Jito API:", bundleEndpoint);
       
       const response = await fetch(bundleEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           transactions: serializedTxs,
+          meta: {
+            version: this.API_VERSION,
+          }
         }),
       });
 
@@ -128,7 +167,13 @@ class JitoService {
 
       const result = await response.json();
       console.log("Bundle submitted successfully:", result);
-      return result;
+      
+      // Check bundle status
+      if (result.status === 'accepted') {
+        return result;
+      } else {
+        throw new Error(`Bundle submission failed: ${result.status}`);
+      }
     } catch (error) {
       console.error("Error submitting bundle:", error);
       throw error;
@@ -137,3 +182,4 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
+
