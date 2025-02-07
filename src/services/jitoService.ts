@@ -74,6 +74,7 @@ class JitoService {
     const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
 
     try {
+      console.log(`Making request to ${endpoint} with method ${method}`);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -92,13 +93,21 @@ class JitoService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`HTTP error: ${response.status}`, errorText);
         throw new Error(`HTTP error: ${response.status} - ${errorText}`);
       }
 
-      return await response.json();
+      const jsonResponse = await response.json();
+      console.log('Jito API Response:', jsonResponse);
+      return jsonResponse;
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Request timeout');
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.error('Request timeout to Jito API');
+          throw new Error('Request to Jito API timed out');
+        }
+        console.error('Error making request to Jito API:', error);
+        throw error;
       }
       throw error;
     }
@@ -154,31 +163,14 @@ class JitoService {
     }
   }
 
-  private async checkJitoApiHealth(): Promise<boolean> {
-    try {
-      const response = await this.makeRequest(
-        this.getApiUrl('bundles'),
-        'getHealth',
-        []
-      );
-      return !response.error;
-    } catch (error) {
-      console.error("Jito API health check failed:", error);
-      return false;
-    }
-  }
-
   async submitBundle(transactions: Transaction[]): Promise<any> {
     try {
+      console.log("Starting bundle submission process");
       const bundleValidation = this.validateBundleConstraints(transactions);
       if (!bundleValidation.isValid) {
+        console.error("Bundle validation failed:", bundleValidation.error);
+        toast.error(bundleValidation.error);
         throw new Error(bundleValidation.error);
-      }
-
-      console.log("Checking Jito API health...");
-      const isHealthy = await this.checkJitoApiHealth();
-      if (!isHealthy) {
-        throw new Error("Jito API is currently unavailable");
       }
 
       console.log("Preparing transactions for bundle submission");
@@ -188,7 +180,10 @@ class JitoService {
       for (const tx of transactions) {
         const assertionResult = await lighthouseService.buildAssertions(tx);
         if (!assertionResult.success) {
-          throw new Error(`Failed to build assertions: ${assertionResult.failureReason}`);
+          const errorMessage = `Failed to build assertions: ${assertionResult.failureReason}`;
+          console.error(errorMessage);
+          toast.error(errorMessage);
+          throw new Error(errorMessage);
         }
         
         bundleWithAssertions.push(tx);
@@ -200,7 +195,10 @@ class JitoService {
 
       const serializedTxs = bundleWithAssertions.map(tx => {
         if (!tx.feePayer) {
-          throw new Error("Transaction fee payer required");
+          const errorMessage = "Transaction fee payer required";
+          console.error(errorMessage);
+          toast.error(errorMessage);
+          throw new Error(errorMessage);
         }
         const serialized = tx.serialize();
         return Buffer.from(serialized).toString('base64');
@@ -218,16 +216,19 @@ class JitoService {
       );
 
       if (response.error) {
-        console.error("Jito API returned error:", response.error);
-        toast.error(`Jito API error: ${response.error.message}`);
-        throw new Error(`Jito API error: ${response.error.message}`);
+        const errorMessage = `Jito API error: ${response.error.message}`;
+        console.error(errorMessage, response.error);
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
       }
 
       console.log("Bundle submitted successfully:", response);
       toast.success("Bundle submitted successfully to Jito");
       return response.result;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       console.error("Error submitting bundle:", error);
+      toast.error(`Failed to submit bundle: ${errorMessage}`);
       throw error;
     }
   }
