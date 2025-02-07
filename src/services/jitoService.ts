@@ -1,4 +1,3 @@
-
 import { Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
@@ -69,46 +68,44 @@ class JitoService {
     }
 
     try {
-      const transactionsWithAssertions: Transaction[] = [];
-      
       const bundleValidation = this.validateBundleConstraints(transactions);
       if (!bundleValidation.isValid) {
         console.error("Bundle validation failed:", bundleValidation.error);
         return false;
       }
 
+      // Process transactions in sequence
       for (const tx of transactions) {
-        // Always use strict validation strategy
-        const strategy = {
-          balanceTolerance: 1,
-          requireOwnerMatch: true,
-          requireDelegateMatch: true,
-          requireDataMatch: true
-        };
-
         console.log("Building Lighthouse assertions for transaction");
-        const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
+        
+        // Use appropriate validation strategy based on transaction type
+        const assertionResult = await lighthouseService.buildAssertions(tx);
         
         if (!assertionResult.success) {
           console.error("Failed to build Lighthouse assertions:", assertionResult.failureReason);
           return false;
         }
 
-        transactionsWithAssertions.push(tx);
-        if (assertionResult.assertionTransaction) {
-          assertionResult.assertionTransaction.feePayer = tx.feePayer;
-          transactionsWithAssertions.push(assertionResult.assertionTransaction);
-        }
-      }
-
-      // Simulate transactions
-      for (const tx of transactionsWithAssertions) {
+        // Simulate the original transaction
         console.log("Simulating transaction");
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
           console.error("Transaction validation failed:", simulation.value.err);
           return false;
+        }
+
+        // If there's an assertion transaction, simulate it as well
+        if (assertionResult.assertionTransaction) {
+          assertionResult.assertionTransaction.feePayer = tx.feePayer;
+          const assertionSimulation = await this.connection.simulateTransaction(
+            assertionResult.assertionTransaction
+          );
+          
+          if (assertionSimulation.value.err) {
+            console.error("Assertion validation failed:", assertionSimulation.value.err);
+            return false;
+          }
         }
       }
       

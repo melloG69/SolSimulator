@@ -1,4 +1,3 @@
-
 import { 
   Transaction, 
   PublicKey, 
@@ -33,6 +32,90 @@ class LighthouseService {
     this.connection = connection;
   }
 
+  private isRegularTransfer(instruction: TransactionInstruction): boolean {
+    if (!instruction.programId.equals(SystemProgram.programId)) {
+      return false;
+    }
+    // Check if it's a regular transfer instruction (first byte is 2)
+    return instruction.data[0] === 2;
+  }
+
+  private isComputeBudgetInstruction(instruction: TransactionInstruction): boolean {
+    return instruction.programId.equals(ComputeBudgetProgram.programId);
+  }
+
+  private async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
+    for (const ix of transaction.instructions) {
+      // Skip compute budget instructions for regular transactions
+      if (this.isComputeBudgetInstruction(ix)) {
+        const dataView = Buffer.from(ix.data);
+        const units = dataView.readUInt32LE(1);
+        // Only flag if compute units are excessively high
+        if (units > this.MAX_COMPUTE_UNITS) {
+          return { 
+            isMalicious: true, 
+            reason: `Excessive compute units detected: ${units} > ${this.MAX_COMPUTE_UNITS}` 
+          };
+        }
+        continue;
+      }
+
+      // If it's a regular transfer, validate the amount
+      if (this.isRegularTransfer(ix)) {
+        const fromAccount = ix.keys.find(key => key.isWritable && key.isSigner);
+        if (fromAccount) {
+          const accountInfo = await this.connection.getAccountInfo(fromAccount.pubkey);
+          if (accountInfo) {
+            const dataView = Buffer.from(ix.data);
+            const transferAmount = dataView.readBigUInt64LE(1);
+            // Add a small buffer for fees
+            if (transferAmount > BigInt(accountInfo.lamports - 10000)) {
+              return {
+                isMalicious: true,
+                reason: "Transfer amount exceeds account balance"
+              };
+            }
+          }
+        }
+        continue;
+      }
+
+      // Check for ownership changes (only for non-transfer instructions)
+      if (!this.isRegularTransfer(ix) && ix.data[0] === 0x01) {
+        return {
+          isMalicious: true,
+          reason: "Unauthorized ownership change detected"
+        };
+      }
+    }
+
+    return { isMalicious: false };
+  }
+
+  private getValidationStrategy(transaction: Transaction): AssertionStrategy {
+    const hasOnlyRegularTransfers = transaction.instructions.every(ix => 
+      this.isRegularTransfer(ix) || this.isComputeBudgetInstruction(ix)
+    );
+
+    if (hasOnlyRegularTransfers) {
+      // Relaxed validation for regular transfers
+      return {
+        balanceTolerance: 5, // 5% tolerance for regular transfers
+        requireOwnerMatch: false,
+        requireDelegateMatch: false,
+        requireDataMatch: false
+      };
+    }
+
+    // Strict validation for other transaction types
+    return {
+      balanceTolerance: 1,
+      requireOwnerMatch: true,
+      requireDelegateMatch: true,
+      requireDataMatch: true
+    };
+  }
+
   private async validateAccount(pubkey: PublicKey): Promise<boolean> {
     try {
       const accountInfo = await this.connection.getAccountInfo(pubkey);
@@ -51,69 +134,6 @@ class LighthouseService {
       console.error("Error validating program account:", error);
       return false;
     }
-  }
-
-  private async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
-    // Check for excessive compute units
-    const computeIx = transaction.instructions.find(ix => 
-      ix.programId.equals(ComputeBudgetProgram.programId)
-    );
-    
-    if (computeIx) {
-      const dataView = Buffer.from(computeIx.data);
-      const units = dataView.readUInt32LE(1);
-      if (units > this.MAX_COMPUTE_UNITS) {
-        return { 
-          isMalicious: true, 
-          reason: `Excessive compute units detected: ${units} > ${this.MAX_COMPUTE_UNITS}` 
-        };
-      }
-    }
-
-    // Check for potential balance drain attacks
-    const systemTransfers = transaction.instructions.filter(ix => 
-      ix.programId.equals(SystemProgram.programId)
-    );
-
-    for (const transfer of systemTransfers) {
-      const fromAccount = transfer.keys.find(key => key.isWritable && key.isSigner);
-      if (fromAccount) {
-        const accountInfo = await this.connection.getAccountInfo(fromAccount.pubkey);
-        if (accountInfo) {
-          const dataView = Buffer.from(transfer.data);
-          const transferAmount = dataView.readBigUInt64LE(1);
-          if (transferAmount > BigInt(accountInfo.lamports)) {
-            return {
-              isMalicious: true,
-              reason: "Balance drain attack detected: Transfer amount exceeds account balance"
-            };
-          }
-        }
-      }
-    }
-
-    // Check for ownership changes
-    const ownershipChanges = transaction.instructions.filter(ix =>
-      ix.data[0] === 0x01 // Ownership change instruction
-    );
-
-    if (ownershipChanges.length > 0) {
-      return {
-        isMalicious: true,
-        reason: "Unauthorized ownership change detected"
-      };
-    }
-
-    return { isMalicious: false };
-  }
-
-  private getValidationStrategy(transaction: Transaction): AssertionStrategy {
-    return {
-      balanceTolerance: 1,
-      requireOwnerMatch: true,
-      requireDelegateMatch: true,
-      requireDataMatch: true
-    };
   }
 
   async buildAssertions(
