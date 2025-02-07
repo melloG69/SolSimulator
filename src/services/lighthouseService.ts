@@ -31,6 +31,13 @@ class LighthouseService {
     this.connection = connection;
   }
 
+  private isSimpleTransaction(transaction: Transaction): boolean {
+    return transaction.instructions.every(ix => 
+      ix.programId.equals(SystemProgram.programId) ||
+      ix.programId.equals(ComputeBudgetProgram.programId)
+    );
+  }
+
   private async validateAccount(pubkey: PublicKey): Promise<boolean> {
     try {
       const accountInfo = await this.connection.getAccountInfo(pubkey);
@@ -41,11 +48,41 @@ class LighthouseService {
     }
   }
 
+  private async validateProgramAccount(programId: PublicKey): Promise<boolean> {
+    try {
+      const accountInfo = await this.connection.getAccountInfo(programId);
+      return accountInfo !== null && accountInfo.executable;
+    } catch (error) {
+      console.error("Error validating program account:", error);
+      return false;
+    }
+  }
+
+  private getValidationStrategy(transaction: Transaction): AssertionStrategy {
+    if (this.isSimpleTransaction(transaction)) {
+      return {
+        balanceTolerance: 10, // More lenient for simple transactions
+        requireOwnerMatch: false,
+        requireDelegateMatch: false,
+        requireDataMatch: false
+      };
+    }
+    
+    return {
+      balanceTolerance: 1,
+      requireOwnerMatch: true,
+      requireDelegateMatch: true,
+      requireDataMatch: true
+    };
+  }
+
   async buildAssertions(
     transaction: Transaction,
-    strategy: AssertionStrategy
+    providedStrategy?: AssertionStrategy
   ): Promise<AssertionResult> {
     try {
+      const strategy = providedStrategy || this.getValidationStrategy(transaction);
+      
       const assertionTransaction = new Transaction();
       
       // Get all writable accounts including the fee payer
@@ -62,10 +99,28 @@ class LighthouseService {
 
       console.log("Writable accounts for assertions:", uniqueWritableAccounts.map(acc => acc.toBase58()));
 
-      // Validate all accounts exist before proceeding
-      const accountValidations = await Promise.all(
-        uniqueWritableAccounts.map(pubkey => this.validateAccount(pubkey))
-      );
+      // Skip assertions for simple transactions with no writable accounts
+      if (this.isSimpleTransaction(transaction) && uniqueWritableAccounts.length <= 1) {
+        console.log("Skipping assertions for simple transaction");
+        return {
+          success: true,
+          assertionTransaction: undefined
+        };
+      }
+
+      // Validate all accounts and programs exist before proceeding
+      const [accountValidations, programValidations] = await Promise.all([
+        Promise.all(uniqueWritableAccounts.map(pubkey => this.validateAccount(pubkey))),
+        Promise.all(transaction.instructions.map(ix => this.validateProgramAccount(ix.programId)))
+      ]);
+
+      if (!programValidations.every(Boolean)) {
+        console.error("One or more program accounts not found");
+        return {
+          success: false,
+          failureReason: "Program account not found"
+        };
+      }
 
       const validAccounts = uniqueWritableAccounts.filter((_, index) => accountValidations[index]);
 
@@ -152,4 +207,3 @@ class LighthouseService {
 }
 
 export const lighthouseService = new LighthouseService();
-

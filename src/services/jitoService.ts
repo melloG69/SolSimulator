@@ -1,4 +1,5 @@
-import { Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
+
+import { Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 import { lighthouseService } from "./lighthouseService";
@@ -17,8 +18,8 @@ interface JitoResponse {
 class JitoService {
   private connection: typeof connection;
   private readonly JITO_API_URL = "https://jito-api.mainnet.solana.com";
-  private readonly MAX_TRANSACTIONS = 3; // Reduced for mainnet safety
-  private readonly MAX_COMPUTE_UNITS = 1_200_000; // Adjusted for mainnet
+  private readonly MAX_TRANSACTIONS = 3;
+  private readonly MAX_COMPUTE_UNITS = 1_200_000;
 
   constructor() {
     this.connection = connection;
@@ -45,8 +46,14 @@ class JitoService {
     }
   }
 
+  private isSimpleTransaction(transaction: Transaction): boolean {
+    return transaction.instructions.every(ix => 
+      ix.programId.equals(SystemProgram.programId) ||
+      ix.programId.equals(ComputeBudgetProgram.programId)
+    );
+  }
+
   private validateBundleConstraints(transactions: Transaction[]): { isValid: boolean; error?: string } {
-    // Check transaction count
     if (transactions.length > this.MAX_TRANSACTIONS) {
       return {
         isValid: false,
@@ -54,7 +61,6 @@ class JitoService {
       };
     }
 
-    // Check for empty bundle
     if (transactions.length === 0) {
       return {
         isValid: false,
@@ -62,7 +68,6 @@ class JitoService {
       };
     }
 
-    // Validate slot boundaries
     const firstTxSlot = transactions[0].lastValidBlockHeight;
     const validSlot = transactions.every(tx => 
       tx.lastValidBlockHeight === firstTxSlot
@@ -75,7 +80,6 @@ class JitoService {
       };
     }
 
-    // Check if all transactions have fee payers
     const hasFeePayers = transactions.every(tx => tx.feePayer);
     if (!hasFeePayers) {
       return {
@@ -102,50 +106,55 @@ class JitoService {
         return false;
       }
 
-      // Mainnet-specific assertion strategy
-      const strategy = {
-        balanceTolerance: 1, // Stricter tolerance for mainnet
-        requireOwnerMatch: true,
-        requireDelegateMatch: true,
-        requireDataMatch: true
-      };
-
       for (const tx of transactions) {
-        for (const instruction of tx.instructions) {
-          if (!this.validateComputeUnits(instruction)) {
-            console.error("Transaction contains excessive compute unit settings");
-            return false;
+        // Skip compute unit validation for simple transactions
+        if (!this.isSimpleTransaction(tx)) {
+          for (const instruction of tx.instructions) {
+            if (!this.validateComputeUnits(instruction)) {
+              console.error("Transaction contains excessive compute unit settings");
+              return false;
+            }
           }
         }
+
+        // Get appropriate strategy based on transaction type
+        const strategy = {
+          balanceTolerance: this.isSimpleTransaction(tx) ? 10 : 1,
+          requireOwnerMatch: !this.isSimpleTransaction(tx),
+          requireDelegateMatch: !this.isSimpleTransaction(tx),
+          requireDataMatch: !this.isSimpleTransaction(tx)
+        };
 
         console.log("Building Lighthouse assertions for transaction");
         const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
         
-        if (!assertionResult.success || !assertionResult.assertionTransaction) {
+        if (!assertionResult.success) {
           console.error("Failed to build Lighthouse assertions:", assertionResult.failureReason);
           return false;
         }
 
         transactionsWithAssertions.push(tx);
-        assertionResult.assertionTransaction.feePayer = tx.feePayer;
-        transactionsWithAssertions.push(assertionResult.assertionTransaction);
+        if (assertionResult.assertionTransaction) {
+          assertionResult.assertionTransaction.feePayer = tx.feePayer;
+          transactionsWithAssertions.push(assertionResult.assertionTransaction);
+        }
       }
 
-      // Simulate with mainnet configuration
+      // Simulate transactions
       for (const tx of transactionsWithAssertions) {
-        console.log("Simulating transaction on mainnet:", tx);
+        console.log("Simulating transaction");
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
-          console.error("Transaction validation failed on mainnet:", simulation.value.err);
+          console.error("Transaction validation failed:", simulation.value.err);
           return false;
         }
       }
       
-      console.log("All transactions validated successfully with Lighthouse assertions");
+      console.log("All transactions validated successfully");
       return true;
     } catch (error) {
-      console.error("Error validating transactions on mainnet:", error);
+      console.error("Error validating transactions:", error);
       return false;
     }
   }
@@ -161,31 +170,33 @@ class JitoService {
     }
 
     try {
-      console.log("Preparing transactions for mainnet bundle submission");
+      console.log("Preparing transactions for bundle submission");
       
-      const strategy = {
-        balanceTolerance: 1,
-        requireOwnerMatch: true,
-        requireDelegateMatch: true,
-        requireDataMatch: true
-      };
-
       const bundleWithAssertions: Transaction[] = [];
       
       for (const tx of transactions) {
+        const strategy = {
+          balanceTolerance: this.isSimpleTransaction(tx) ? 10 : 1,
+          requireOwnerMatch: !this.isSimpleTransaction(tx),
+          requireDelegateMatch: !this.isSimpleTransaction(tx),
+          requireDataMatch: !this.isSimpleTransaction(tx)
+        };
+
         const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
-        if (!assertionResult.success || !assertionResult.assertionTransaction) {
+        if (!assertionResult.success) {
           throw new Error(`Failed to build assertions: ${assertionResult.failureReason}`);
         }
         
         bundleWithAssertions.push(tx);
-        assertionResult.assertionTransaction.feePayer = tx.feePayer;
-        bundleWithAssertions.push(assertionResult.assertionTransaction);
+        if (assertionResult.assertionTransaction) {
+          assertionResult.assertionTransaction.feePayer = tx.feePayer;
+          bundleWithAssertions.push(assertionResult.assertionTransaction);
+        }
       }
 
       const serializedTxs = bundleWithAssertions.map(tx => {
         if (!tx.feePayer) {
-          throw new Error("Transaction fee payer required for mainnet");
+          throw new Error("Transaction fee payer required");
         }
         const serialized = tx.serialize();
         return Buffer.from(serialized).toString('base64');
@@ -193,7 +204,7 @@ class JitoService {
 
       const requestId = this.generateRequestId();
       
-      console.log("Submitting bundle to Jito mainnet API:", this.JITO_API_URL);
+      console.log("Submitting bundle to Jito API");
       
       const requestBody = {
         jsonrpc: "2.0",
@@ -205,7 +216,7 @@ class JitoService {
         id: requestId
       };
 
-      console.log("Mainnet request payload:", JSON.stringify(requestBody, null, 2));
+      console.log("Request payload:", JSON.stringify(requestBody, null, 2));
       
       const response = await fetch(this.JITO_API_URL, {
         method: 'POST',
@@ -216,19 +227,19 @@ class JitoService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to submit bundle to mainnet: ${await response.text()} (${response.status})`);
+        throw new Error(`Failed to submit bundle: ${await response.text()} (${response.status})`);
       }
 
       const result: JitoResponse = await response.json();
 
       if (result.error) {
-        throw new Error(`Jito mainnet API error: ${result.error.message}`);
+        throw new Error(`Jito API error: ${result.error.message}`);
       }
 
-      console.log("Bundle submitted successfully to mainnet:", result);
+      console.log("Bundle submitted successfully:", result);
       return result.result;
     } catch (error) {
-      console.error("Error submitting bundle to mainnet:", error);
+      console.error("Error submitting bundle:", error);
       throw error;
     }
   }
