@@ -27,16 +27,10 @@ interface AssertionResult {
 
 class LighthouseService {
   private connection: typeof connection;
+  private readonly MAX_COMPUTE_UNITS = 1_200_000;
 
   constructor() {
     this.connection = connection;
-  }
-
-  private isSimpleTransaction(transaction: Transaction): boolean {
-    return transaction.instructions.every(ix => 
-      ix.programId.equals(SystemProgram.programId) ||
-      ix.programId.equals(ComputeBudgetProgram.programId)
-    );
   }
 
   private async validateAccount(pubkey: PublicKey): Promise<boolean> {
@@ -59,16 +53,61 @@ class LighthouseService {
     }
   }
 
-  private getValidationStrategy(transaction: Transaction): AssertionStrategy {
-    if (this.isSimpleTransaction(transaction)) {
+  private async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
+    // Check for excessive compute units
+    const computeIx = transaction.instructions.find(ix => 
+      ix.programId.equals(ComputeBudgetProgram.programId)
+    );
+    
+    if (computeIx) {
+      const dataView = Buffer.from(computeIx.data);
+      const units = dataView.readUInt32LE(1);
+      if (units > this.MAX_COMPUTE_UNITS) {
+        return { 
+          isMalicious: true, 
+          reason: `Excessive compute units detected: ${units} > ${this.MAX_COMPUTE_UNITS}` 
+        };
+      }
+    }
+
+    // Check for potential balance drain attacks
+    const systemTransfers = transaction.instructions.filter(ix => 
+      ix.programId.equals(SystemProgram.programId)
+    );
+
+    for (const transfer of systemTransfers) {
+      const fromAccount = transfer.keys.find(key => key.isWritable && key.isSigner);
+      if (fromAccount) {
+        const accountInfo = await this.connection.getAccountInfo(fromAccount.pubkey);
+        if (accountInfo) {
+          const dataView = Buffer.from(transfer.data);
+          const transferAmount = dataView.readBigUInt64LE(1);
+          if (transferAmount > BigInt(accountInfo.lamports)) {
+            return {
+              isMalicious: true,
+              reason: "Balance drain attack detected: Transfer amount exceeds account balance"
+            };
+          }
+        }
+      }
+    }
+
+    // Check for ownership changes
+    const ownershipChanges = transaction.instructions.filter(ix =>
+      ix.data[0] === 0x01 // Ownership change instruction
+    );
+
+    if (ownershipChanges.length > 0) {
       return {
-        balanceTolerance: 10, // More lenient for simple transactions
-        requireOwnerMatch: false,
-        requireDelegateMatch: false,
-        requireDataMatch: false
+        isMalicious: true,
+        reason: "Unauthorized ownership change detected"
       };
     }
-    
+
+    return { isMalicious: false };
+  }
+
+  private getValidationStrategy(transaction: Transaction): AssertionStrategy {
     return {
       balanceTolerance: 1,
       requireOwnerMatch: true,
@@ -82,6 +121,16 @@ class LighthouseService {
     providedStrategy?: AssertionStrategy
   ): Promise<AssertionResult> {
     try {
+      // First check for malicious patterns
+      const maliciousCheck = await this.detectMaliciousPatterns(transaction);
+      if (maliciousCheck.isMalicious) {
+        console.error("Malicious transaction detected:", maliciousCheck.reason);
+        return {
+          success: false,
+          failureReason: maliciousCheck.reason
+        };
+      }
+
       const strategy = providedStrategy || this.getValidationStrategy(transaction);
       
       const assertionTransaction = new Transaction();
@@ -100,15 +149,6 @@ class LighthouseService {
 
       console.log("Writable accounts for assertions:", uniqueWritableAccounts.map(acc => acc.toBase58()));
 
-      // Skip assertions for simple transactions with no writable accounts
-      if (this.isSimpleTransaction(transaction) && uniqueWritableAccounts.length <= 1) {
-        console.log("Skipping assertions for simple transaction");
-        return {
-          success: true,
-          assertionTransaction: undefined
-        };
-      }
-
       // Validate all accounts and programs exist before proceeding
       const [accountValidations, programValidations] = await Promise.all([
         Promise.all(uniqueWritableAccounts.map(pubkey => this.validateAccount(pubkey))),
@@ -126,14 +166,14 @@ class LighthouseService {
       const validAccounts = uniqueWritableAccounts.filter((_, index) => accountValidations[index]);
 
       if (validAccounts.length === 0) {
-        console.error("No valid accounts found. Writable accounts:", uniqueWritableAccounts.map(acc => acc.toBase58()));
+        console.error("No valid accounts found for assertions");
         return {
           success: false,
           failureReason: "No valid accounts found for assertions"
         };
       }
 
-      // Get pre-execution state for valid accounts only
+      // Get pre-execution state
       const accountInfos = await Promise.all(
         validAccounts.map(pubkey => this.connection.getAccountInfo(pubkey))
       );
@@ -142,11 +182,9 @@ class LighthouseService {
       const assertionData = Buffer.alloc(1024);
       let offset = 0;
 
-      // Write header
       assertionData.writeUInt8(0x1, offset);
       offset += 1;
 
-      // Write account assertions only for valid accounts
       for (let i = 0; i < validAccounts.length; i++) {
         const accountInfo = accountInfos[i];
         if (!accountInfo) continue;
@@ -154,26 +192,19 @@ class LighthouseService {
         validAccounts[i].toBuffer().copy(assertionData, offset);
         offset += 32;
 
-        if (strategy.balanceTolerance > 0) {
-          assertionData.writeBigUInt64LE(BigInt(accountInfo.lamports), offset);
-          offset += 8;
-        }
+        assertionData.writeBigUInt64LE(BigInt(accountInfo.lamports), offset);
+        offset += 8;
 
-        if (strategy.requireOwnerMatch) {
-          accountInfo.owner.toBuffer().copy(assertionData, offset);
-          offset += 32;
-        }
+        accountInfo.owner.toBuffer().copy(assertionData, offset);
+        offset += 32;
 
-        if (strategy.requireDataMatch) {
-          const dataHash = Buffer.from(accountInfo.data);
-          assertionData.writeUInt32LE(dataHash.length, offset);
-          offset += 4;
-          dataHash.copy(assertionData, offset);
-          offset += dataHash.length;
-        }
+        const dataHash = Buffer.from(accountInfo.data);
+        assertionData.writeUInt32LE(dataHash.length, offset);
+        offset += 4;
+        dataHash.copy(assertionData, offset);
+        offset += dataHash.length;
       }
 
-      // Create assertion instruction
       const assertionInstruction = new TransactionInstruction({
         programId: LIGHTHOUSE_PROGRAM_ID,
         keys: [

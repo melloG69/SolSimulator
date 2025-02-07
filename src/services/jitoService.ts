@@ -19,38 +19,9 @@ class JitoService {
   private connection: typeof connection;
   private readonly JITO_API_URL = "https://jito-api.mainnet.solana.com";
   private readonly MAX_TRANSACTIONS = 3;
-  private readonly MAX_COMPUTE_UNITS = 1_200_000;
 
   constructor() {
     this.connection = connection;
-  }
-
-  private validateComputeUnits(instruction: TransactionInstruction): boolean {
-    try {
-      const programId = instruction.programId.toBase58();
-      if (programId === ComputeBudgetProgram.programId.toBase58()) {
-        const dataView = Buffer.from(instruction.data);
-        const units = dataView.readUInt32LE(1);
-        
-        console.log("Validating compute units:", units);
-        
-        if (units > this.MAX_COMPUTE_UNITS) {
-          console.error("Excessive compute unit limit detected:", units);
-          return false;
-        }
-      }
-      return true;
-    } catch (error) {
-      console.error("Error validating compute units:", error);
-      return false;
-    }
-  }
-
-  private isSimpleTransaction(transaction: Transaction): boolean {
-    return transaction.instructions.every(ix => 
-      ix.programId.equals(SystemProgram.programId) ||
-      ix.programId.equals(ComputeBudgetProgram.programId)
-    );
   }
 
   private validateBundleConstraints(transactions: Transaction[]): { isValid: boolean; error?: string } {
@@ -107,22 +78,12 @@ class JitoService {
       }
 
       for (const tx of transactions) {
-        // Skip compute unit validation for simple transactions
-        if (!this.isSimpleTransaction(tx)) {
-          for (const instruction of tx.instructions) {
-            if (!this.validateComputeUnits(instruction)) {
-              console.error("Transaction contains excessive compute unit settings");
-              return false;
-            }
-          }
-        }
-
-        // Get appropriate strategy based on transaction type
+        // Always use strict validation strategy
         const strategy = {
-          balanceTolerance: this.isSimpleTransaction(tx) ? 10 : 1,
-          requireOwnerMatch: !this.isSimpleTransaction(tx),
-          requireDelegateMatch: !this.isSimpleTransaction(tx),
-          requireDataMatch: !this.isSimpleTransaction(tx)
+          balanceTolerance: 1,
+          requireOwnerMatch: true,
+          requireDelegateMatch: true,
+          requireDataMatch: true
         };
 
         console.log("Building Lighthouse assertions for transaction");
@@ -176,10 +137,10 @@ class JitoService {
       
       for (const tx of transactions) {
         const strategy = {
-          balanceTolerance: this.isSimpleTransaction(tx) ? 10 : 1,
-          requireOwnerMatch: !this.isSimpleTransaction(tx),
-          requireDelegateMatch: !this.isSimpleTransaction(tx),
-          requireDataMatch: !this.isSimpleTransaction(tx)
+          balanceTolerance: 1,
+          requireOwnerMatch: true,
+          requireDelegateMatch: true,
+          requireDataMatch: true
         };
 
         const assertionResult = await lighthouseService.buildAssertions(tx, strategy);
