@@ -19,21 +19,45 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     const checkDependencies = async () => {
       try {
         // Check if required globals are available
-        if (typeof window !== 'undefined' && window.Buffer && window.process) {
-          // Verify connection to Solana network
-          const version = await connection.getVersion();
-          console.log('Connected to Solana network:', version);
-          setIsReady(true);
-        } else {
-          throw new Error('Required dependencies not found');
+        if (typeof window === 'undefined' || !window.Buffer || !window.process) {
+          throw new Error('Required browser dependencies not found');
         }
+
+        // Add timeout for connection check
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Connection timeout')), 15000);
+        });
+
+        // Try to get version with timeout
+        const versionPromise = connection.getVersion();
+        const version = await Promise.race([versionPromise, timeoutPromise]);
+
+        console.log('Successfully connected to Solana network:', version);
+        setIsReady(true);
       } catch (error) {
         console.error('Failed to initialize Solana providers:', error);
-        toast.error('Failed to connect to Solana network. Please refresh the page.');
+        
+        // Show more specific error messages based on error type
+        if (error instanceof Error) {
+          if (error.message === 'Connection timeout') {
+            toast.error('Connection to Solana network timed out. Please check your internet connection and refresh.');
+          } else if (error.message === 'Required browser dependencies not found') {
+            toast.error('Browser compatibility issue detected. Please use a modern browser.');
+          } else {
+            toast.error(`Failed to connect to Solana network: ${error.message}. Please refresh the page.`);
+          }
+        } else {
+          toast.error('An unexpected error occurred while connecting to Solana network.');
+        }
       }
     };
 
     checkDependencies();
+
+    // Cleanup function
+    return () => {
+      setIsReady(false);
+    };
   }, []);
 
   if (!isReady) {

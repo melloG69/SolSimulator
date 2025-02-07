@@ -4,15 +4,12 @@ import bs58 from "bs58";
 
 // Initialize connection with correct RPC URL format
 export const HELIUS_API_KEY = "31befc63-acf8-4929-b0c6-21f5177679aa";
-export const HELIUS_RPC = `https://devnet.helius-rpc.com`;
+export const HELIUS_RPC = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
-// Initialize connection with proper configuration
+// Initialize connection with simplified configuration
 export const connection = new Connection(HELIUS_RPC, {
   commitment: "confirmed",
-  httpHeaders: {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${HELIUS_API_KEY}`
-  }
+  confirmTransactionInitialTimeout: 60000, // 60 second timeout
 });
 
 // Initialize wallet from private key
