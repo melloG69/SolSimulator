@@ -16,8 +16,8 @@ interface JitoResponse {
 
 class JitoService {
   private connection: typeof connection;
-  private readonly JITO_API_URL = "https://testnet.block-engine.jito.wtf";
-  private readonly API_VERSION = "v1";
+  private readonly JITO_API_URL = "https://api.devnet.solana.com";
+  private readonly JITO_BUNDLE_PATH = "/jito/v1/bundles";
   private readonly MAX_TRANSACTIONS = 5;
   private readonly MAX_COMPUTE_UNITS = 1_400_000;
 
@@ -161,7 +161,6 @@ class JitoService {
   }
 
   async submitBundle(transactions: Transaction[]): Promise<any> {
-    // Validate bundle constraints
     const bundleValidation = this.validateBundleConstraints(transactions);
     if (!bundleValidation.isValid) {
       throw new Error(bundleValidation.error);
@@ -178,34 +177,27 @@ class JitoService {
       });
 
       const requestId = this.generateRequestId();
-      const bundleEndpoint = `${this.JITO_API_URL}/api/${this.API_VERSION}/bundles`;
+      const bundleEndpoint = `${this.JITO_API_URL}${this.JITO_BUNDLE_PATH}`;
       
       console.log("Submitting bundle to Jito API:", bundleEndpoint);
-      console.log("Request payload:", {
+      
+      const requestBody = {
         jsonrpc: "2.0",
         method: "submitBundle",
         params: {
-          transactions: serializedTxs,
-          version: this.API_VERSION
+          transactions: serializedTxs
         },
         id: requestId
-      });
+      };
+
+      console.log("Request payload:", requestBody);
       
       const response = await fetch(bundleEndpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json-rpc',
-          'Accept': 'application/json-rpc',
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "submitBundle",
-          params: {
-            transactions: serializedTxs,
-            version: this.API_VERSION
-          },
-          id: requestId
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const responseText = await response.text();
