@@ -69,6 +69,14 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       switch (type) {
         case 'compute':
           console.log("Creating high compute units attack transaction");
+          // Add a system transfer to ensure there's a writable account
+          maliciousTransaction.add(
+            SystemProgram.transfer({
+              fromPubkey: publicKey,
+              toPubkey: publicKey,
+              lamports: 1000,
+            })
+          );
           maliciousTransaction.add(
             ComputeBudgetProgram.setComputeUnitLimit({
               units: 1_400_000,
@@ -158,7 +166,18 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     }
 
     try {
-      const newTransaction = new Transaction().add(
+      const newTransaction = new Transaction();
+      
+      // Add a minimal SOL transfer to ensure there's a writable account
+      newTransaction.add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: publicKey,
+          lamports: 1000,
+        })
+      );
+      
+      newTransaction.add(
         ComputeBudgetProgram.setComputeUnitLimit({
           units: 200_000,
         })
@@ -188,3 +207,4 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     addMaliciousTransaction
   };
 };
+

@@ -47,18 +47,30 @@ class LighthouseService {
   ): Promise<AssertionResult> {
     try {
       const assertionTransaction = new Transaction();
-      const writableAccounts = transaction.instructions
-        .flatMap(ix => ix.keys.filter(key => key.isWritable))
-        .map(key => key.pubkey);
+      
+      // Get all writable accounts including the fee payer
+      const writableAccounts = [
+        transaction.feePayer!,
+        ...transaction.instructions
+          .flatMap(ix => ix.keys.filter(key => key.isWritable))
+          .map(key => key.pubkey)
+      ];
+
+      // Filter out duplicates
+      const uniqueWritableAccounts = Array.from(new Set(writableAccounts.map(acc => acc.toBase58())))
+        .map(addr => new PublicKey(addr));
+
+      console.log("Writable accounts for assertions:", uniqueWritableAccounts.map(acc => acc.toBase58()));
 
       // Validate all accounts exist before proceeding
       const accountValidations = await Promise.all(
-        writableAccounts.map(pubkey => this.validateAccount(pubkey))
+        uniqueWritableAccounts.map(pubkey => this.validateAccount(pubkey))
       );
 
-      const validAccounts = writableAccounts.filter((_, index) => accountValidations[index]);
+      const validAccounts = uniqueWritableAccounts.filter((_, index) => accountValidations[index]);
 
       if (validAccounts.length === 0) {
+        console.error("No valid accounts found. Writable accounts:", uniqueWritableAccounts.map(acc => acc.toBase58()));
         return {
           success: false,
           failureReason: "No valid accounts found for assertions"
@@ -140,3 +152,4 @@ class LighthouseService {
 }
 
 export const lighthouseService = new LighthouseService();
+
