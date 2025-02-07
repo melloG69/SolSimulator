@@ -19,7 +19,10 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
       stream: 'stream-browserify',
       crypto: 'crypto-browserify',
-      buffer: 'buffer',
+      buffer: 'buffer/',
+      process: 'process/browser',
+      util: 'util',
+      events: 'events',
     },
   },
   define: {
@@ -36,11 +39,11 @@ export default defineConfig(({ mode }) => ({
       '@solana/web3.js',
       '@solana/spl-token',
       'bs58',
-      'buffer',
       'stream-browserify',
       'crypto-browserify',
       'events',
       'util',
+      'process/browser',
     ],
   },
   build: {
@@ -55,9 +58,6 @@ export default defineConfig(({ mode }) => ({
         /browserify-sign/,
         /crypto-browserify/,
       ],
-    },
-    rollupOptions: {
-      external: ['buffer'],
     },
   },
 }));

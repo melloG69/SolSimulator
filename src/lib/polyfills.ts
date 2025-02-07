@@ -1,7 +1,7 @@
 
-import { Buffer } from 'buffer';
+import { Buffer } from 'buffer/';
 import stream from 'stream-browserify';
-import process from 'process';
+import process from 'process/browser';
 import util from 'util';
 import EventEmitter from 'events';
 
