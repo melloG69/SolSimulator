@@ -1,3 +1,4 @@
+
 import { Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
@@ -181,12 +182,19 @@ class JitoService {
       
       console.log("Submitting bundle to Jito API:", bundleEndpoint);
       
+      // Updated request body with correct method name and parameters format
       const requestBody = {
         jsonrpc: "2.0",
-        method: "submitBundle",
-        params: {
-          transactions: serializedTxs
-        },
+        method: "jito_submitBundle",  // Updated method name with namespace
+        params: [                     // Updated params format to match Jito API
+          {
+            transactions: serializedTxs,
+            header: {
+              tip: 0,                 // Optional tip amount
+              recoveryMode: false     // Optional recovery mode flag
+            }
+          }
+        ],
         id: requestId
       };
 
@@ -233,3 +241,4 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
+
