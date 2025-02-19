@@ -16,25 +16,24 @@ export const useBundleOperations = () => {
       console.log('Synchronizing transactions with blockhash:', blockhash);
       
       return Promise.all(transactions.map(async (tx) => {
-        // Create assertion transaction first
+        // Update original transaction with new blockhash
+        tx.recentBlockhash = blockhash;
+        tx.lastValidBlockHeight = lastValidBlockHeight;
+        
+        // Build assertions for the transaction
         const assertionResult = await lighthouseService.buildAssertions(tx);
         
-        // Create a new transaction instance for the original transaction
-        const newTx = new Transaction();
-        newTx.recentBlockhash = blockhash;
-        newTx.lastValidBlockHeight = lastValidBlockHeight;
-        tx.instructions.forEach(ix => newTx.add(ix));
-        if (tx.feePayer) newTx.feePayer = tx.feePayer;
-
-        // If there's an assertion transaction, prepare it as well
+        // If there's an assertion transaction, update it with the same blockhash
         if (assertionResult.assertionTransaction) {
           assertionResult.assertionTransaction.recentBlockhash = blockhash;
           assertionResult.assertionTransaction.lastValidBlockHeight = lastValidBlockHeight;
-          if (tx.feePayer) assertionResult.assertionTransaction.feePayer = tx.feePayer;
+          if (tx.feePayer) {
+            assertionResult.assertionTransaction.feePayer = tx.feePayer;
+          }
         }
         
         console.log('Transaction pair synchronized with blockhash:', blockhash);
-        return [newTx, assertionResult.assertionTransaction].filter(Boolean) as Transaction[];
+        return [tx, assertionResult.assertionTransaction].filter(Boolean) as Transaction[];
       }));
     } catch (error) {
       console.error("Error synchronizing transactions:", error);
@@ -77,6 +76,7 @@ export const useBundleOperations = () => {
       await createBundle(bundleId, publicKey);
       console.log('Bundle created with ID:', bundleId);
 
+      // Synchronize transactions with latest blockhash
       const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
       const flattenedTransactions = synchronizedTransactionGroups.flat();
       verifyBlockhash(flattenedTransactions);
@@ -152,28 +152,37 @@ export const useBundleOperations = () => {
       await setWalletContext(publicKey);
       console.log('Starting bundle execution process');
       
-      // Synchronize transactions and create assertion pairs
+      // Synchronize transactions with latest blockhash
       const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
       const flattenedTransactions = synchronizedTransactionGroups.flat();
       verifyBlockhash(flattenedTransactions);
       console.log('Transactions synchronized and verified before signing');
-      
-      // Sign all transactions (original + assertions)
+
+      // Sign all transactions
       console.log("Signing all transactions...");
       const signedTransactions = await Promise.all(
-        flattenedTransactions.map(async tx => {
+        flattenedTransactions.map(async (tx) => {
+          console.log('Signing transaction with feePayer:', tx.feePayer?.toBase58());
           const signedTx = await signTransaction(tx);
-          if (!signedTx.recentBlockhash) {
-            throw new Error('Transaction lost blockhash during signing');
-          }
+          console.log('Transaction signed, signatures:', 
+            signedTx.signatures.map(sig => ({
+              pubkey: sig.publicKey.toBase58(),
+              signature: sig.signature?.toString('base64') || 'null'
+            }))
+          );
           return signedTx;
         })
       );
 
-      // Verify all transactions one final time
-      verifyBlockhash(signedTransactions);
-      console.log("All transactions signed and verified, submitting bundle to Jito...");
+      // Verify all transactions are properly signed
+      console.log("Verifying signatures for all transactions...");
+      signedTransactions.forEach((tx, index) => {
+        if (!tx.signatures.some(sig => sig.signature)) {
+          throw new Error(`Transaction ${index} is missing signatures after signing`);
+        }
+      });
 
+      console.log("All transactions signed and verified, submitting bundle to Jito...");
       const result = await jitoService.submitBundle(signedTransactions);
       const signatures = result.signatures || [];
 
@@ -203,4 +212,3 @@ export const useBundleOperations = () => {
     executeBundle
   };
 };
-
