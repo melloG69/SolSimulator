@@ -75,17 +75,28 @@ class LighthouseService {
     try {
       const assertionTx = new Transaction();
       
-      // Add assertion instructions based on transaction type
+      // Add system clock for validation
+      assertionTx.add(
+        new TransactionInstruction({
+          keys: [
+            { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false }
+          ],
+          programId: LIGHTHOUSE_PROGRAM_ID,
+          data: Buffer.from([])
+        })
+      );
+      
+      // Add compute budget specific assertions if needed
       if (this.hasComputeBudgetInstruction(transaction)) {
         console.log("Creating compute budget assertions");
-        // Add compute budget specific assertions
+        assertionTx.add(
+          new TransactionInstruction({
+            keys: [],
+            programId: LIGHTHOUSE_PROGRAM_ID,
+            data: Buffer.from([0]) // Compute budget assertion opcode
+          })
+        );
       }
-
-      // Always add balance change assertions
-      console.log("Creating balance change assertions");
-      
-      // Add program state change assertions
-      console.log("Creating program state assertions");
 
       return assertionTx;
     } catch (error) {
@@ -137,3 +148,4 @@ class LighthouseService {
 }
 
 export const lighthouseService = new LighthouseService();
+

@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { setWalletContext, createBundle, updateBundleStatus } from "@/utils/supabaseUtils";
 import { connection } from "@/lib/solana";
 import { SimulationResult } from "./useBundleState";
+import { lighthouseService } from "@/services/lighthouseService";
 
 export const useBundleOperations = () => {
   const { toast } = useToast();
@@ -14,17 +15,27 @@ export const useBundleOperations = () => {
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
       console.log('Synchronizing transactions with blockhash:', blockhash);
       
-      return transactions.map(tx => {
-        // Create a new transaction to avoid mutation
+      return Promise.all(transactions.map(async (tx) => {
+        // Create assertion transaction first
+        const assertionResult = await lighthouseService.buildAssertions(tx);
+        
+        // Create a new transaction instance for the original transaction
         const newTx = new Transaction();
         newTx.recentBlockhash = blockhash;
         newTx.lastValidBlockHeight = lastValidBlockHeight;
         tx.instructions.forEach(ix => newTx.add(ix));
         if (tx.feePayer) newTx.feePayer = tx.feePayer;
+
+        // If there's an assertion transaction, prepare it as well
+        if (assertionResult.assertionTransaction) {
+          assertionResult.assertionTransaction.recentBlockhash = blockhash;
+          assertionResult.assertionTransaction.lastValidBlockHeight = lastValidBlockHeight;
+          if (tx.feePayer) assertionResult.assertionTransaction.feePayer = tx.feePayer;
+        }
         
-        console.log('Transaction updated with blockhash:', newTx.recentBlockhash);
-        return newTx;
-      });
+        console.log('Transaction pair synchronized with blockhash:', blockhash);
+        return [newTx, assertionResult.assertionTransaction].filter(Boolean) as Transaction[];
+      }));
     } catch (error) {
       console.error("Error synchronizing transactions:", error);
       throw error;
@@ -61,22 +72,20 @@ export const useBundleOperations = () => {
     try {
       console.log('Starting bundle simulation for wallet:', publicKey);
       await setWalletContext(publicKey);
-      console.log('Wallet context set, proceeding with bundle creation');
       
       const bundleId = crypto.randomUUID();
       await createBundle(bundleId, publicKey);
-      console.log('Bundle created successfully, proceeding with validation');
+      console.log('Bundle created with ID:', bundleId);
 
-      const synchronizedTransactions = await synchronizeTransactions(transactions);
-      verifyBlockhash(synchronizedTransactions);
-      console.log('Transactions synchronized and verified with blockhash');
+      const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
+      const flattenedTransactions = synchronizedTransactionGroups.flat();
+      verifyBlockhash(flattenedTransactions);
 
-      const isValid = await jitoService.validateTransactions(synchronizedTransactions);
+      const isValid = await jitoService.validateTransactions(flattenedTransactions);
       
       if (!isValid) {
         setSimulationStatus('failed');
         await updateBundleStatus(bundleId, 'failed', { error: 'Bundle validation failed' });
-
         toast({
           title: "Simulation Failed",
           description: "Malicious activity detected in the bundle",
@@ -87,7 +96,7 @@ export const useBundleOperations = () => {
 
       setSimulationStatus('success');
       await updateBundleStatus(bundleId, 'simulated', { success: true });
-
+      
       toast({
         title: "Simulation Complete",
         description: "Bundle has been successfully simulated",
@@ -143,17 +152,17 @@ export const useBundleOperations = () => {
       await setWalletContext(publicKey);
       console.log('Starting bundle execution process');
       
-      // First synchronize the transactions
-      const synchronizedTransactions = await synchronizeTransactions(transactions);
-      verifyBlockhash(synchronizedTransactions);
+      // Synchronize transactions and create assertion pairs
+      const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
+      const flattenedTransactions = synchronizedTransactionGroups.flat();
+      verifyBlockhash(flattenedTransactions);
       console.log('Transactions synchronized and verified before signing');
       
-      // Sign the synchronized transactions
-      console.log("Signing transactions...");
+      // Sign all transactions (original + assertions)
+      console.log("Signing all transactions...");
       const signedTransactions = await Promise.all(
-        synchronizedTransactions.map(async tx => {
+        flattenedTransactions.map(async tx => {
           const signedTx = await signTransaction(tx);
-          // Verify blockhash persists after signing
           if (!signedTx.recentBlockhash) {
             throw new Error('Transaction lost blockhash during signing');
           }
@@ -161,9 +170,9 @@ export const useBundleOperations = () => {
         })
       );
 
-      // Verify one final time before submission
+      // Verify all transactions one final time
       verifyBlockhash(signedTransactions);
-      console.log("Signed transactions verified, submitting to Jito...");
+      console.log("All transactions signed and verified, submitting bundle to Jito...");
 
       const result = await jitoService.submitBundle(signedTransactions);
       const signatures = result.signatures || [];
