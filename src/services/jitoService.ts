@@ -66,6 +66,18 @@ class JitoService {
       };
     }
 
+    const hasSignatures = transactions.every(tx => {
+      if (!tx.feePayer) return false;
+      return tx.signatures.some(sig => sig.publicKey.equals(tx.feePayer!));
+    });
+
+    if (!hasSignatures) {
+      return {
+        isValid: false,
+        error: "All transactions must be signed by their fee payer"
+      };
+    }
+
     return { isValid: true };
   }
 
@@ -132,32 +144,11 @@ class JitoService {
           return false;
         }
 
-        console.log("Building Lighthouse assertions for transaction");
-        const assertionResult = await lighthouseService.buildAssertions(tx);
-        
-        if (!assertionResult.success) {
-          console.error("Failed to build Lighthouse assertions:", assertionResult.failureReason);
-          return false;
-        }
-
         const simulation = await this.connection.simulateTransaction(tx);
         
         if (simulation.value.err) {
           console.error("Transaction validation failed:", simulation.value.err);
           return false;
-        }
-
-        if (assertionResult.assertionTransaction) {
-          assertionResult.assertionTransaction.feePayer = tx.feePayer;
-          assertionResult.assertionTransaction.recentBlockhash = tx.recentBlockhash;
-          const assertionSimulation = await this.connection.simulateTransaction(
-            assertionResult.assertionTransaction
-          );
-          
-          if (assertionSimulation.value.err) {
-            console.error("Assertion validation failed:", assertionSimulation.value.err);
-            return false;
-          }
         }
       }
       
@@ -181,41 +172,23 @@ class JitoService {
 
       console.log("Preparing transactions for bundle submission");
       
-      const bundleWithAssertions: Transaction[] = [];
-      
+      // Verify all transactions are properly signed before serialization
       for (const tx of transactions) {
-        if (!tx.recentBlockhash) {
-          const errorMessage = "Transaction missing recentBlockhash";
-          console.error(errorMessage);
-          toast.error(errorMessage);
-          throw new Error(errorMessage);
-        }
-
-        const assertionResult = await lighthouseService.buildAssertions(tx);
-        if (!assertionResult.success) {
-          const errorMessage = `Failed to build assertions: ${assertionResult.failureReason}`;
-          console.error(errorMessage);
-          toast.error(errorMessage);
-          throw new Error(errorMessage);
-        }
-        
-        bundleWithAssertions.push(tx);
-        if (assertionResult.assertionTransaction) {
-          assertionResult.assertionTransaction.feePayer = tx.feePayer;
-          assertionResult.assertionTransaction.recentBlockhash = tx.recentBlockhash;
-          bundleWithAssertions.push(assertionResult.assertionTransaction);
-        }
-      }
-
-      console.log("Verifying final bundle before submission");
-      for (const tx of bundleWithAssertions) {
         if (!tx.recentBlockhash || !tx.feePayer) {
           throw new Error('Transaction missing required fields before serialization');
         }
+        
+        // Log signature information for debugging
+        console.log('Transaction signatures:', tx.signatures.map(sig => ({
+          pubkey: sig.publicKey.toBase58(),
+          signature: sig.signature?.toString('base64') || 'null'
+        })));
       }
 
-      const serializedTxs = bundleWithAssertions.map(tx => {
-        return Buffer.from(tx.serialize()).toString('base64');
+      const serializedTxs = transactions.map(tx => {
+        const serialized = tx.serialize();
+        console.log(`Serialized transaction (${serialized.length} bytes)`);
+        return Buffer.from(serialized).toString('base64');
       });
 
       console.log("Submitting bundle to Jito API");
