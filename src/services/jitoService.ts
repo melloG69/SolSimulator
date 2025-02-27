@@ -31,7 +31,7 @@ class JitoService {
     return `${this.BASE_URL}/api/${this.API_VERSION}/${endpoint}`;
   }
 
-  private validateBundleConstraints(transactions: Transaction[]): { isValid: boolean; error?: string } {
+  private validateBundleConstraints(transactions: Transaction[], requireSignatures: boolean = false): { isValid: boolean; error?: string } {
     if (transactions.length > this.MAX_TRANSACTIONS) {
       return {
         isValid: false,
@@ -66,9 +66,23 @@ class JitoService {
       };
     }
 
-    // Modified validation for signatures
-    // During simulation we don't have signatures yet, so we'll skip this check
-    // The actual signing happens just before bundle submission
+    // Only check signatures if explicitly required (during submission, not simulation)
+    if (requireSignatures) {
+      const hasSignatures = transactions.every(tx => {
+        if (!tx.feePayer) return false;
+        return tx.signatures.some(sig => 
+          sig.publicKey.equals(tx.feePayer!) && sig.signature !== null
+        );
+      });
+      
+      if (!hasSignatures) {
+        return {
+          isValid: false,
+          error: "All transactions must be signed by their fee payer"
+        };
+      }
+    }
+
     return { isValid: true };
   }
 
@@ -116,38 +130,80 @@ class JitoService {
     }
   }
 
-  async validateTransactions(transactions: Transaction[]): Promise<boolean> {
+  async simulateTransactions(transactions: Transaction[]): Promise<{
+    isValid: boolean;
+    error?: string;
+    details?: any;
+  }> {
     if (!transactions || transactions.length === 0) {
-      console.log("No transactions to validate");
-      return false;
+      console.log("No transactions to simulate");
+      return { isValid: false, error: "No transactions to simulate" };
     }
 
     try {
-      const bundleValidation = this.validateBundleConstraints(transactions);
+      // Check basic bundle constraints but don't require signatures for simulation
+      const bundleValidation = this.validateBundleConstraints(transactions, false);
       if (!bundleValidation.isValid) {
-        console.error("Bundle validation failed:", bundleValidation.error);
-        return false;
+        console.error("Bundle constraint validation failed:", bundleValidation.error);
+        return { isValid: false, error: bundleValidation.error };
       }
 
-      for (const tx of transactions) {
-        if (!tx.recentBlockhash) {
-          console.error("Transaction missing recentBlockhash during validation");
-          return false;
-        }
+      // Simulate each transaction to check for errors
+      const simulationResults = await Promise.all(
+        transactions.map(async (tx) => {
+          if (!tx.recentBlockhash) {
+            return { success: false, error: "Transaction missing recentBlockhash" };
+          }
 
-        const simulation = await this.connection.simulateTransaction(tx);
+          try {
+            const simulation = await this.connection.simulateTransaction(tx);
+            if (simulation.value.err) {
+              return { 
+                success: false, 
+                error: `Simulation error: ${simulation.value.err}`,
+                details: simulation.value 
+              };
+            }
+            return { success: true, details: simulation.value };
+          } catch (error) {
+            return { 
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown simulation error",
+              details: error
+            };
+          }
+        })
+      );
+
+      // Check for malicious activity by analyzing simulation results
+      const maliciousActivity = simulationResults.some(result => {
+        if (!result.success) return true;
         
-        if (simulation.value.err) {
-          console.error("Transaction validation failed:", simulation.value.err);
-          return false;
-        }
+        // Here we can add more sophisticated checks for malicious activity
+        // based on the simulation results and Lighthouse assertions
+        
+        return false;
+      });
+
+      if (maliciousActivity) {
+        const failedResults = simulationResults.filter(r => !r.success);
+        const errorMessages = failedResults.map(r => r.error).join('; ');
+        console.error("Malicious activity detected in transactions:", errorMessages);
+        return { 
+          isValid: false, 
+          error: "Potential malicious activity detected",
+          details: simulationResults 
+        };
       }
       
-      console.log("All transactions validated successfully");
-      return true;
+      console.log("All transactions simulated successfully");
+      return { isValid: true, details: simulationResults };
     } catch (error) {
-      console.error("Error validating transactions:", error);
-      return false;
+      console.error("Error during transaction simulation:", error);
+      return { 
+        isValid: false, 
+        error: error instanceof Error ? error.message : "Unknown error during simulation"
+      };
     }
   }
 
@@ -155,16 +211,10 @@ class JitoService {
     try {
       console.log("Starting bundle submission process");
       
-      // For submission, we need to check signatures
-      const hasSignatures = transactions.every(tx => {
-        if (!tx.feePayer) return false;
-        return tx.signatures.some(sig => 
-          sig.publicKey.equals(tx.feePayer!) && sig.signature !== null
-        );
-      });
-      
-      if (!hasSignatures) {
-        const error = "Bundle validation failed: All transactions must be signed by their fee payer";
+      // For submission, we validate with signature requirement
+      const bundleValidation = this.validateBundleConstraints(transactions, true);
+      if (!bundleValidation.isValid) {
+        const error = `Bundle validation failed: ${bundleValidation.error}`;
         console.error(error);
         toast.error(error);
         throw new Error(error);
@@ -172,13 +222,8 @@ class JitoService {
       
       console.log("Preparing transactions for bundle submission");
       
-      // Verify all transactions are properly signed before serialization
+      // Debug log signature information
       for (const tx of transactions) {
-        if (!tx.recentBlockhash || !tx.feePayer) {
-          throw new Error('Transaction missing required fields before serialization');
-        }
-        
-        // Log signature information for debugging
         console.log('Transaction signatures:', tx.signatures.map(sig => ({
           pubkey: sig.publicKey.toBase58(),
           signature: sig.signature?.toString('base64') || 'null'

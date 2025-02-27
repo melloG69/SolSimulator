@@ -80,18 +80,29 @@ export const useBundleOperations = () => {
       const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
       const flattenedTransactions = synchronizedTransactionGroups.flat();
       verifyBlockhash(flattenedTransactions);
-
-      const isValid = await jitoService.validateTransactions(flattenedTransactions);
       
-      if (!isValid) {
+      console.log('Simulating transactions before validation...');
+      const simulationResult = await jitoService.simulateTransactions(flattenedTransactions);
+      
+      if (!simulationResult.isValid) {
+        console.error('Simulation failed:', simulationResult.error);
         setSimulationStatus('failed');
-        await updateBundleStatus(bundleId, 'failed', { error: 'Bundle validation failed' });
+        await updateBundleStatus(bundleId, 'failed', { 
+          error: simulationResult.error || 'Simulation failed', 
+          details: simulationResult.details 
+        });
+        
         toast({
           title: "Simulation Failed",
-          description: "Malicious activity detected in the bundle",
+          description: simulationResult.error || "Malicious activity detected in the bundle",
           variant: "destructive",
         });
-        return transactions.map(() => ({ success: false, message: "Validation failed" }));
+        
+        return transactions.map(() => ({ 
+          success: false, 
+          message: simulationResult.error || "Simulation failed", 
+          bundleId 
+        }));
       }
 
       setSimulationStatus('success');
@@ -102,7 +113,7 @@ export const useBundleOperations = () => {
         description: "Bundle has been successfully simulated",
       });
 
-      return transactions.map(() => ({ success: true }));
+      return transactions.map(() => ({ success: true, bundleId }));
     } catch (error) {
       console.error("Simulation error:", error);
       setSimulationStatus('failed');
