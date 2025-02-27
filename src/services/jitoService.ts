@@ -95,6 +95,8 @@ class JitoService {
 
     try {
       console.log(`Making request to ${endpoint} with method ${method}`);
+      console.log('Request params:', JSON.stringify(params, null, 2));
+      
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -344,21 +346,28 @@ class JitoService {
         })));
       }
 
-      const serializedTxs = transactions.map(tx => {
+      // Properly serialize transactions for Jito API format
+      const encodedTransactions = transactions.map(tx => {
         const serialized = tx.serialize();
         console.log(`Serialized transaction (${serialized.length} bytes)`);
         return Buffer.from(serialized).toString('base64');
       });
 
-      console.log("Submitting bundle to Jito API");
+      // FIXED: Format bundle correctly according to Jito API requirements
+      // The bundle parameter should be an object with transactions array
+      const bundleParams = {
+        bundle: {
+          transactions: encodedTransactions,
+        }
+      };
+
+      console.log("Submitting bundle to Jito API with format:", JSON.stringify(bundleParams, null, 2));
       
+      // FIXED: Pass bundle parameters as expected by Jito API
       const response = await this.makeRequest(
         this.getApiUrl('bundles'),
         'sendBundle',
-        [{
-          transactions: serializedTxs,
-          encoding: "base64",
-        }]
+        [bundleParams]
       );
 
       if (response.error) {
