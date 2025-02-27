@@ -28,6 +28,7 @@ interface AssertionResult {
 class LighthouseService {
   private connection: typeof connection;
   private readonly MAX_COMPUTE_UNITS = 1_200_000;
+  private readonly MAX_INSTRUCTIONS_PER_TX = 20;
 
   constructor() {
     this.connection = connection;
@@ -42,33 +43,78 @@ class LighthouseService {
   }
 
   private async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
-    // Check for compute units in all transactions
-    if (this.hasComputeBudgetInstruction(transaction)) {
-      for (const ix of transaction.instructions) {
-        if (this.isComputeBudgetInstruction(ix)) {
-          const dataView = Buffer.from(ix.data);
-          const units = dataView.readUInt32LE(1);
-          if (units > this.MAX_COMPUTE_UNITS) {
-            return { 
-              isMalicious: true, 
-              reason: `Excessive compute units detected: ${units} > ${this.MAX_COMPUTE_UNITS}` 
-            };
+    try {
+      // Check for excessive compute units
+      if (this.hasComputeBudgetInstruction(transaction)) {
+        for (const ix of transaction.instructions) {
+          if (this.isComputeBudgetInstruction(ix)) {
+            try {
+              const dataView = Buffer.from(ix.data);
+              // Check if dataView is long enough before reading
+              if (dataView.length >= 5) { // Validate buffer length
+                const units = dataView.readUInt32LE(1);
+                console.log(`Compute units detected: ${units}`);
+                if (units > this.MAX_COMPUTE_UNITS) {
+                  return { 
+                    isMalicious: true, 
+                    reason: `Excessive compute units detected: ${units} > ${this.MAX_COMPUTE_UNITS}` 
+                  };
+                }
+              }
+            } catch (error) {
+              console.error("Error parsing compute budget instruction:", error);
+              // Continue checking other instructions rather than failing immediately
+            }
           }
         }
       }
-    }
 
-    // Check for system program instructions
-    for (const ix of transaction.instructions) {
-      if (ix.programId.equals(SystemProgram.programId)) {
-        // Validate system program transfers
-        const dataView = Buffer.from(ix.data);
-        const transferAmount = dataView.readBigUInt64LE(4);
-        console.log("Validating system transfer amount:", transferAmount.toString());
+      // Check for too many instructions (potential DoS vector)
+      if (transaction.instructions.length > this.MAX_INSTRUCTIONS_PER_TX) {
+        return {
+          isMalicious: true,
+          reason: `Too many instructions in transaction: ${transaction.instructions.length} > ${this.MAX_INSTRUCTIONS_PER_TX}`
+        };
       }
-    }
 
-    return { isMalicious: false };
+      // Check for system program instructions and validate them
+      for (const ix of transaction.instructions) {
+        if (ix.programId.equals(SystemProgram.programId)) {
+          try {
+            // Validate system program transfers
+            const dataView = Buffer.from(ix.data);
+            if (dataView.length >= 12) { // Ensure buffer has enough bytes
+              // Check instruction type (0 = Create, 2 = Transfer)
+              const instructionType = dataView.readUInt32LE(0);
+              
+              if (instructionType === 2) { // Transfer instruction
+                const transferAmount = dataView.readBigUInt64LE(4);
+                console.log("Validating system transfer amount:", transferAmount.toString());
+                
+                // Check for unusually large transfers (potential drain attempt)
+                // Example threshold: 1 SOL
+                if (transferAmount > BigInt(1_000_000_000)) {
+                  return {
+                    isMalicious: true,
+                    reason: `Unusually large transfer detected: ${transferAmount.toString()} lamports`
+                  };
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Error validating system instruction:", error);
+            // Continue with other checks
+          }
+        }
+      }
+
+      // All checks passed
+      return { isMalicious: false };
+    } catch (error) {
+      console.error("Error in malicious pattern detection:", error);
+      // Default to non-malicious if detection process fails
+      return { isMalicious: false };
+    }
   }
 
   private async createAssertionTransaction(transaction: Transaction): Promise<Transaction | undefined> {
@@ -105,13 +151,54 @@ class LighthouseService {
     }
   }
 
+  async validateTransaction(transaction: Transaction): Promise<boolean> {
+    try {
+      // Basic validation - check if the transaction has required fields
+      if (!transaction.recentBlockhash) {
+        console.error("Transaction missing recentBlockhash");
+        return false;
+      }
+
+      if (!transaction.feePayer) {
+        console.error("Transaction missing feePayer");
+        return false;
+      }
+
+      // Simulate transaction to check if it would execute successfully
+      try {
+        const simulation = await this.connection.simulateTransaction(transaction);
+        if (simulation.value.err) {
+          console.error("Transaction simulation failed:", simulation.value.err);
+          return false;
+        }
+      } catch (error) {
+        console.error("Error simulating transaction:", error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error validating transaction:", error);
+      return false;
+    }
+  }
+
   async buildAssertions(
     transaction: Transaction
   ): Promise<AssertionResult> {
     try {
       console.log("Building Lighthouse assertions for transaction");
 
-      // Check for malicious patterns in all transactions
+      // Validate transaction structure first
+      const isValid = await this.validateTransaction(transaction);
+      if (!isValid) {
+        return {
+          success: false,
+          failureReason: "Transaction failed basic validation"
+        };
+      }
+
+      // Check for malicious patterns in the transaction
       const maliciousCheck = await this.detectMaliciousPatterns(transaction);
       if (maliciousCheck.isMalicious) {
         console.error("Malicious transaction detected:", maliciousCheck.reason);
@@ -121,7 +208,7 @@ class LighthouseService {
         };
       }
 
-      // Create assertion transaction for all transactions
+      // Create assertion transaction
       const assertionTransaction = await this.createAssertionTransaction(transaction);
       
       if (!assertionTransaction) {
@@ -148,4 +235,3 @@ class LighthouseService {
 }
 
 export const lighthouseService = new LighthouseService();
-

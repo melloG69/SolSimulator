@@ -12,7 +12,10 @@ export const useBundleOperations = () => {
 
   const synchronizeTransactions = async (transactions: Transaction[]) => {
     try {
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      // Get latest blockhash for transaction validity
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash({
+        commitment: 'confirmed'
+      });
       console.log('Synchronizing transactions with blockhash:', blockhash);
       
       return Promise.all(transactions.map(async (tx) => {
@@ -32,8 +35,14 @@ export const useBundleOperations = () => {
           }
         }
         
+        // Only include assertion transaction if it was successfully created
+        const transactions = [tx];
+        if (assertionResult.success && assertionResult.assertionTransaction) {
+          transactions.push(assertionResult.assertionTransaction);
+        }
+        
         console.log('Transaction pair synchronized with blockhash:', blockhash);
-        return [tx, assertionResult.assertionTransaction].filter(Boolean) as Transaction[];
+        return transactions;
       }));
     } catch (error) {
       console.error("Error synchronizing transactions:", error);
@@ -47,6 +56,49 @@ export const useBundleOperations = () => {
         throw new Error('Transaction missing recentBlockhash after synchronization');
       }
       console.log('Verified blockhash for transaction:', tx.recentBlockhash);
+    }
+  };
+
+  const verifyAccounts = async (transactions: Transaction[]) => {
+    try {
+      // Check if accounts referenced in transactions exist
+      for (const tx of transactions) {
+        // Check the fee payer account
+        if (tx.feePayer) {
+          const feePayerInfo = await connection.getAccountInfo(tx.feePayer);
+          if (!feePayerInfo) {
+            console.error(`Fee payer account ${tx.feePayer.toString()} does not exist`);
+            return {
+              valid: false,
+              error: `Fee payer account ${tx.feePayer.toString()} not found or has no balance`
+            };
+          }
+        }
+
+        // Check accounts referenced in instructions
+        for (const instruction of tx.instructions) {
+          for (const accountMeta of instruction.keys) {
+            if (accountMeta.isSigner || accountMeta.isWritable) {
+              const accountInfo = await connection.getAccountInfo(accountMeta.pubkey);
+              if (!accountInfo) {
+                console.error(`Referenced account ${accountMeta.pubkey.toString()} does not exist`);
+                return {
+                  valid: false,
+                  error: `Referenced account ${accountMeta.pubkey.toString()} not found`
+                };
+              }
+            }
+          }
+        }
+      }
+      
+      return { valid: true };
+    } catch (error) {
+      console.error("Error verifying accounts:", error);
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : "Error verifying transaction accounts"
+      };
     }
   };
 
@@ -72,6 +124,7 @@ export const useBundleOperations = () => {
       console.log('Starting bundle simulation for wallet:', publicKey);
       await setWalletContext(publicKey);
       
+      // Create a unique bundle ID
       const bundleId = crypto.randomUUID();
       await createBundle(bundleId, publicKey);
       console.log('Bundle created with ID:', bundleId);
@@ -81,7 +134,29 @@ export const useBundleOperations = () => {
       const flattenedTransactions = synchronizedTransactionGroups.flat();
       verifyBlockhash(flattenedTransactions);
       
-      console.log('Simulating transactions before validation...');
+      // Verify accounts exist before simulation
+      const accountVerification = await verifyAccounts(flattenedTransactions);
+      if (!accountVerification.valid) {
+        console.error('Account verification failed:', accountVerification.error);
+        setSimulationStatus('failed');
+        await updateBundleStatus(bundleId, 'failed', { 
+          error: accountVerification.error || 'Account verification failed'
+        });
+        
+        toast({
+          title: "Account Error",
+          description: accountVerification.error || "One or more required accounts not found",
+          variant: "destructive",
+        });
+        
+        return transactions.map(() => ({ 
+          success: false, 
+          message: accountVerification.error || "Account verification failed", 
+          bundleId 
+        }));
+      }
+      
+      console.log('Simulating transactions...');
       const simulationResult = await jitoService.simulateTransactions(flattenedTransactions);
       
       if (!simulationResult.isValid) {
@@ -92,6 +167,7 @@ export const useBundleOperations = () => {
           details: simulationResult.details 
         });
         
+        // Use the specific error from the simulation result if available
         toast({
           title: "Simulation Failed",
           description: simulationResult.error || "Malicious activity detected in the bundle",
@@ -168,6 +244,12 @@ export const useBundleOperations = () => {
       const flattenedTransactions = synchronizedTransactionGroups.flat();
       verifyBlockhash(flattenedTransactions);
       console.log('Transactions synchronized and verified before signing');
+
+      // Verify accounts exist before execution
+      const accountVerification = await verifyAccounts(flattenedTransactions);
+      if (!accountVerification.valid) {
+        throw new Error(accountVerification.error || 'Account verification failed');
+      }
 
       // Sign all transactions
       console.log("Signing all transactions...");
