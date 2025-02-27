@@ -66,18 +66,9 @@ class JitoService {
       };
     }
 
-    const hasSignatures = transactions.every(tx => {
-      if (!tx.feePayer) return false;
-      return tx.signatures.some(sig => sig.publicKey.equals(tx.feePayer!));
-    });
-
-    if (!hasSignatures) {
-      return {
-        isValid: false,
-        error: "All transactions must be signed by their fee payer"
-      };
-    }
-
+    // Modified validation for signatures
+    // During simulation we don't have signatures yet, so we'll skip this check
+    // The actual signing happens just before bundle submission
     return { isValid: true };
   }
 
@@ -163,13 +154,22 @@ class JitoService {
   async submitBundle(transactions: Transaction[]): Promise<any> {
     try {
       console.log("Starting bundle submission process");
-      const bundleValidation = this.validateBundleConstraints(transactions);
-      if (!bundleValidation.isValid) {
-        console.error("Bundle validation failed:", bundleValidation.error);
-        toast.error(bundleValidation.error);
-        throw new Error(bundleValidation.error);
+      
+      // For submission, we need to check signatures
+      const hasSignatures = transactions.every(tx => {
+        if (!tx.feePayer) return false;
+        return tx.signatures.some(sig => 
+          sig.publicKey.equals(tx.feePayer!) && sig.signature !== null
+        );
+      });
+      
+      if (!hasSignatures) {
+        const error = "Bundle validation failed: All transactions must be signed by their fee payer";
+        console.error(error);
+        toast.error(error);
+        throw new Error(error);
       }
-
+      
       console.log("Preparing transactions for bundle submission");
       
       // Verify all transactions are properly signed before serialization
@@ -222,4 +222,3 @@ class JitoService {
 }
 
 export const jitoService = new JitoService();
-
