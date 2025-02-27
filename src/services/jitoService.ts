@@ -353,17 +353,15 @@ class JitoService {
         return Buffer.from(serialized).toString('base64');
       });
 
-      // FIXED: Format bundle correctly according to Jito API requirements
-      // The bundle parameter should be an object with transactions array
+      // Format directly according to Jito API requirements
+      // This is the correct format per Jito documentation
       const bundleParams = {
-        bundle: {
-          transactions: encodedTransactions,
-        }
+        transactions: encodedTransactions
       };
 
       console.log("Submitting bundle to Jito API with format:", JSON.stringify(bundleParams, null, 2));
       
-      // FIXED: Pass bundle parameters as expected by Jito API
+      // Send the correctly formatted bundle parameters
       const response = await this.makeRequest(
         this.getApiUrl('bundles'),
         'sendBundle',

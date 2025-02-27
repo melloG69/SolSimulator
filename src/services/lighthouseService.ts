@@ -10,8 +10,8 @@ import {
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 
-// Lighthouse Program ID on Mainnet
-const LIGHTHOUSE_PROGRAM_ID = new PublicKey("LHi8mAU9LVi8Rv1tkHxE5vKg1cdPwkQFBG7dT4SdPvR");
+// Correct Lighthouse Program ID on Mainnet (Jito's official deployment)
+const LIGHTHOUSE_PROGRAM_ID = new PublicKey("LightHf584t3j1LwXj9MiKRt3R6xZD5sBtKoLPRe2q9C");
 
 interface AssertionResult {
   success: boolean;
@@ -45,7 +45,7 @@ class LighthouseService {
       if (this.programAccountVerified) {
         console.log("✅ Lighthouse program account verified on mainnet");
       } else {
-        console.error("❌ Lighthouse program account not found on mainnet");
+        console.error("❌ Lighthouse program account not found on mainnet. Using address:", LIGHTHOUSE_PROGRAM_ID.toString());
       }
       
       return this.programAccountVerified;
