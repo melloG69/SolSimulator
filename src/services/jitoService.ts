@@ -2,7 +2,6 @@
 import { Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
-import { lighthouseService } from "./lighthouseService";
 import { toast } from "sonner";
 
 interface JitoResponse {
@@ -14,6 +13,10 @@ interface JitoResponse {
     data?: any;
   };
   id: string | number;
+}
+
+interface SimulationOptions {
+  skipLighthouseCheck?: boolean;
 }
 
 class JitoService {
@@ -130,10 +133,80 @@ class JitoService {
     }
   }
 
-  async simulateTransactions(transactions: Transaction[]): Promise<{
+  private classifySimulationError(error: any): { 
+    isNormalError: boolean; 
+    isMaliciousActivity: boolean; 
+    message: string; 
+  } {
+    // Convert error to string for easier parsing
+    const errorString = typeof error === 'string' 
+      ? error 
+      : error instanceof Error 
+        ? error.message 
+        : JSON.stringify(error);
+    
+    // Common error patterns and their classifications
+    const knownNormalErrors = [
+      'insufficient funds',
+      'insufficient lamports',
+      'not enough SOL',
+      'account has no balance',
+      'Account doesn\'t exist',
+      'Invalid blockhash',
+      'blockhash not found',
+      'ProgramAccountNotFound',
+      'Connection error',
+      'timeout',
+      'fetch failed'
+    ];
+    
+    const maliciousPatterns = [
+      'excessive compute',
+      'compute budget exceeded',
+      'abnormal state change',
+      'unexpected state change',
+      'malicious activity',
+      'validation constraint violated'
+    ];
+    
+    // Check if this is a known normal error
+    for (const pattern of knownNormalErrors) {
+      if (errorString.toLowerCase().includes(pattern.toLowerCase())) {
+        return {
+          isNormalError: true,
+          isMaliciousActivity: false,
+          message: `Normal error: ${errorString}`
+        };
+      }
+    }
+    
+    // Check if this is a potential malicious pattern
+    for (const pattern of maliciousPatterns) {
+      if (errorString.toLowerCase().includes(pattern.toLowerCase())) {
+        return {
+          isNormalError: false,
+          isMaliciousActivity: true,
+          message: `Potential malicious activity: ${errorString}`
+        };
+      }
+    }
+    
+    // If we can't classify it, treat as a normal error but with a clear message
+    return {
+      isNormalError: true,
+      isMaliciousActivity: false,
+      message: `Unclassified error: ${errorString}`
+    };
+  }
+
+  async simulateTransactions(
+    transactions: Transaction[], 
+    options: SimulationOptions = {}
+  ): Promise<{
     isValid: boolean;
     error?: string;
     details?: any;
+    normalErrors?: boolean;
   }> {
     if (!transactions || transactions.length === 0) {
       console.log("No transactions to simulate");
@@ -145,30 +218,49 @@ class JitoService {
       const bundleValidation = this.validateBundleConstraints(transactions, false);
       if (!bundleValidation.isValid) {
         console.error("Bundle constraint validation failed:", bundleValidation.error);
-        return { isValid: false, error: bundleValidation.error };
+        return { 
+          isValid: false, 
+          error: bundleValidation.error,
+          normalErrors: true // Bundle constraints are normal errors
+        };
       }
 
       // Simulate each transaction to check for errors
       const simulationResults = await Promise.all(
         transactions.map(async (tx) => {
           if (!tx.recentBlockhash) {
-            return { success: false, error: "Transaction missing recentBlockhash" };
+            return { 
+              success: false, 
+              error: "Transaction missing recentBlockhash",
+              isNormalError: true,
+              isMaliciousActivity: false
+            };
           }
 
           try {
             const simulation = await this.connection.simulateTransaction(tx);
             if (simulation.value.err) {
+              // Classify the error
+              const errorClassification = this.classifySimulationError(simulation.value.err);
+              
               return { 
                 success: false, 
-                error: `Simulation error: ${simulation.value.err}`,
+                error: errorClassification.message,
+                isNormalError: errorClassification.isNormalError,
+                isMaliciousActivity: errorClassification.isMaliciousActivity,
                 details: simulation.value 
               };
             }
             return { success: true, details: simulation.value };
           } catch (error) {
+            // Classify caught errors too
+            const errorClassification = this.classifySimulationError(error);
+            
             return { 
               success: false,
-              error: error instanceof Error ? error.message : "Unknown simulation error",
+              error: errorClassification.message,
+              isNormalError: errorClassification.isNormalError,
+              isMaliciousActivity: errorClassification.isMaliciousActivity,
               details: error
             };
           }
@@ -176,23 +268,41 @@ class JitoService {
       );
 
       // Check for malicious activity by analyzing simulation results
-      const maliciousActivity = simulationResults.some(result => {
-        if (!result.success) return true;
-        
-        // Here we can add more sophisticated checks for malicious activity
-        // based on the simulation results and Lighthouse assertions
-        
-        return false;
-      });
+      // Only look for actual malicious activity, not normal errors
+      const maliciousActivity = simulationResults.some(result => 
+        !result.success && result.isMaliciousActivity === true
+      );
+      
+      // If there are only normal errors (not malicious), we may allow the bundle
+      const hasOnlyNormalErrors = simulationResults.some(result => 
+        !result.success && result.isNormalError === true
+      );
 
       if (maliciousActivity) {
-        const failedResults = simulationResults.filter(r => !r.success);
-        const errorMessages = failedResults.map(r => r.error).join('; ');
+        // Get only the malicious results
+        const maliciousResults = simulationResults.filter(r => 
+          !r.success && r.isMaliciousActivity === true
+        );
+        const errorMessages = maliciousResults.map(r => r.error).join('; ');
         console.error("Malicious activity detected in transactions:", errorMessages);
+        
         return { 
           isValid: false, 
-          error: "Potential malicious activity detected",
-          details: simulationResults 
+          error: "Potential malicious activity detected in bundle",
+          details: simulationResults,
+          normalErrors: false
+        };
+      } else if (hasOnlyNormalErrors && !options.skipLighthouseCheck) {
+        // If there are normal errors but not malicious ones
+        const failedResults = simulationResults.filter(r => !r.success);
+        const errorMessages = failedResults.map(r => r.error).join('; ');
+        console.log("Bundle has normal errors (not malicious activity):", errorMessages);
+        
+        return { 
+          isValid: false, 
+          error: "Bundle contains errors that need to be fixed",
+          details: simulationResults,
+          normalErrors: true
         };
       }
       
@@ -200,9 +310,13 @@ class JitoService {
       return { isValid: true, details: simulationResults };
     } catch (error) {
       console.error("Error during transaction simulation:", error);
+      // Classify the overall error
+      const errorClassification = this.classifySimulationError(error);
+      
       return { 
         isValid: false, 
-        error: error instanceof Error ? error.message : "Unknown error during simulation"
+        error: errorClassification.message,
+        normalErrors: errorClassification.isNormalError 
       };
     }
   }

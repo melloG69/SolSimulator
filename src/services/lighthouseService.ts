@@ -10,28 +10,50 @@ import {
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 
+// Lighthouse Program ID on Mainnet
 const LIGHTHOUSE_PROGRAM_ID = new PublicKey("LHi8mAU9LVi8Rv1tkHxE5vKg1cdPwkQFBG7dT4SdPvR");
-
-interface AssertionStrategy {
-  balanceTolerance: number;
-  requireOwnerMatch: boolean;
-  requireDelegateMatch: boolean;
-  requireDataMatch: boolean;
-}
 
 interface AssertionResult {
   success: boolean;
   failureReason?: string;
   assertionTransaction?: Transaction;
+  isProgramAvailable?: boolean;
 }
 
 class LighthouseService {
   private connection: typeof connection;
   private readonly MAX_COMPUTE_UNITS = 1_200_000;
   private readonly MAX_INSTRUCTIONS_PER_TX = 20;
+  private programAccountVerified: boolean = false;
 
   constructor() {
     this.connection = connection;
+    // Verify program account on instantiation
+    this.verifyProgramAccount();
+  }
+
+  // Verify the Lighthouse program account exists on chain
+  private async verifyProgramAccount(): Promise<boolean> {
+    try {
+      if (this.programAccountVerified) return true;
+      
+      console.log("Verifying Lighthouse program account existence...");
+      const accountInfo = await this.connection.getAccountInfo(LIGHTHOUSE_PROGRAM_ID);
+      
+      this.programAccountVerified = accountInfo !== null;
+      
+      if (this.programAccountVerified) {
+        console.log("✅ Lighthouse program account verified on mainnet");
+      } else {
+        console.error("❌ Lighthouse program account not found on mainnet");
+      }
+      
+      return this.programAccountVerified;
+    } catch (error) {
+      console.error("Error verifying Lighthouse program account:", error);
+      this.programAccountVerified = false;
+      return false;
+    }
   }
 
   private isComputeBudgetInstruction(instruction: TransactionInstruction): boolean {
@@ -119,6 +141,13 @@ class LighthouseService {
 
   private async createAssertionTransaction(transaction: Transaction): Promise<Transaction | undefined> {
     try {
+      // First verify that the Lighthouse program is available
+      const isProgramAvailable = await this.verifyProgramAccount();
+      if (!isProgramAvailable) {
+        console.error("Cannot create assertion transaction: Lighthouse program not available on mainnet");
+        return undefined;
+      }
+
       const assertionTx = new Transaction();
       
       // Add system clock for validation
@@ -144,6 +173,8 @@ class LighthouseService {
         );
       }
 
+      // If we get here, the assertion transaction is valid
+      console.log("Successfully created Lighthouse assertion transaction");
       return assertionTx;
     } catch (error) {
       console.error("Error creating assertion transaction:", error);
@@ -164,7 +195,7 @@ class LighthouseService {
         return false;
       }
 
-      // Simulate transaction to check if it would execute successfully
+      // Only simulate if passing basic validation
       try {
         const simulation = await this.connection.simulateTransaction(transaction);
         if (simulation.value.err) {
@@ -189,12 +220,24 @@ class LighthouseService {
     try {
       console.log("Building Lighthouse assertions for transaction");
 
-      // Validate transaction structure first
+      // First, check if Lighthouse program is available
+      const isProgramAvailable = await this.verifyProgramAccount();
+      if (!isProgramAvailable) {
+        console.log("Lighthouse program not found on mainnet - skipping assertions");
+        return {
+          success: false,
+          failureReason: "Lighthouse program not available on mainnet",
+          isProgramAvailable: false
+        };
+      }
+      
+      // Validate transaction structure
       const isValid = await this.validateTransaction(transaction);
       if (!isValid) {
         return {
           success: false,
-          failureReason: "Transaction failed basic validation"
+          failureReason: "Transaction failed basic validation",
+          isProgramAvailable: true
         };
       }
 
@@ -204,7 +247,8 @@ class LighthouseService {
         console.error("Malicious transaction detected:", maliciousCheck.reason);
         return {
           success: false,
-          failureReason: maliciousCheck.reason
+          failureReason: maliciousCheck.reason,
+          isProgramAvailable: true
         };
       }
 
@@ -214,21 +258,24 @@ class LighthouseService {
       if (!assertionTransaction) {
         return {
           success: false,
-          failureReason: "Failed to create assertion transaction"
+          failureReason: "Failed to create assertion transaction",
+          isProgramAvailable: true
         };
       }
 
       console.log("Successfully created Lighthouse assertions");
       return {
         success: true,
-        assertionTransaction
+        assertionTransaction,
+        isProgramAvailable: true
       };
 
     } catch (error) {
       console.error("Error in Lighthouse validation:", error);
       return {
         success: false,
-        failureReason: error instanceof Error ? error.message : "Unknown error in Lighthouse validation"
+        failureReason: error instanceof Error ? error.message : "Unknown error in Lighthouse validation",
+        isProgramAvailable: false
       };
     }
   }

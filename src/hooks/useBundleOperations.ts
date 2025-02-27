@@ -23,26 +23,37 @@ export const useBundleOperations = () => {
         tx.recentBlockhash = blockhash;
         tx.lastValidBlockHeight = lastValidBlockHeight;
         
-        // Build assertions for the transaction
+        // First validate the original transaction
+        const validationResult = await jitoService.simulateTransactions([tx], { skipLighthouseCheck: true });
+        if (!validationResult.isValid && !validationResult.normalErrors) {
+          console.error(`Transaction validation failed: ${validationResult.error}`);
+          // Return the transaction by itself, without assertion if it's invalid
+          return [tx];
+        }
+        
+        // Build assertions for the transaction only if transaction is valid
         const assertionResult = await lighthouseService.buildAssertions(tx);
         
+        // Check if Lighthouse program is available
+        if (!assertionResult.isProgramAvailable) {
+          console.log("Lighthouse program not found on mainnet - continuing without assertions");
+          return [tx]; // Continue without assertion
+        }
+        
         // If there's an assertion transaction, update it with the same blockhash
-        if (assertionResult.assertionTransaction) {
+        if (assertionResult.success && assertionResult.assertionTransaction) {
           assertionResult.assertionTransaction.recentBlockhash = blockhash;
           assertionResult.assertionTransaction.lastValidBlockHeight = lastValidBlockHeight;
           if (tx.feePayer) {
             assertionResult.assertionTransaction.feePayer = tx.feePayer;
           }
+          
+          // Only include assertion transaction if it was successfully created
+          return [tx, assertionResult.assertionTransaction];
         }
         
-        // Only include assertion transaction if it was successfully created
-        const transactions = [tx];
-        if (assertionResult.success && assertionResult.assertionTransaction) {
-          transactions.push(assertionResult.assertionTransaction);
-        }
-        
-        console.log('Transaction pair synchronized with blockhash:', blockhash);
-        return transactions;
+        console.log('Transaction synchronized with blockhash:', blockhash);
+        return [tx]; // If no assertion created, return only the original tx
       }));
     } catch (error) {
       console.error("Error synchronizing transactions:", error);
@@ -73,23 +84,20 @@ export const useBundleOperations = () => {
               error: `Fee payer account ${tx.feePayer.toString()} not found or has no balance`
             };
           }
-        }
-
-        // Check accounts referenced in instructions
-        for (const instruction of tx.instructions) {
-          for (const accountMeta of instruction.keys) {
-            if (accountMeta.isSigner || accountMeta.isWritable) {
-              const accountInfo = await connection.getAccountInfo(accountMeta.pubkey);
-              if (!accountInfo) {
-                console.error(`Referenced account ${accountMeta.pubkey.toString()} does not exist`);
-                return {
-                  valid: false,
-                  error: `Referenced account ${accountMeta.pubkey.toString()} not found`
-                };
-              }
-            }
+          
+          // Check if fee payer has sufficient balance (minimum 0.01 SOL)
+          if (feePayerInfo.lamports < 10_000_000) {
+            console.error(`Fee payer account ${tx.feePayer.toString()} has insufficient balance`);
+            return {
+              valid: false,
+              error: `Fee payer account has insufficient balance (needs at least 0.01 SOL)`
+            };
           }
         }
+
+        // We no longer need to check every account in instructions
+        // This was causing false negatives for program accounts
+        // Just check the fee payer is sufficient
       }
       
       return { valid: true };
@@ -129,13 +137,8 @@ export const useBundleOperations = () => {
       await createBundle(bundleId, publicKey);
       console.log('Bundle created with ID:', bundleId);
 
-      // Synchronize transactions with latest blockhash
-      const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
-      const flattenedTransactions = synchronizedTransactionGroups.flat();
-      verifyBlockhash(flattenedTransactions);
-      
-      // Verify accounts exist before simulation
-      const accountVerification = await verifyAccounts(flattenedTransactions);
+      // First, verify accounts exist before any synchronization
+      const accountVerification = await verifyAccounts(transactions);
       if (!accountVerification.valid) {
         console.error('Account verification failed:', accountVerification.error);
         setSimulationStatus('failed');
@@ -155,24 +158,48 @@ export const useBundleOperations = () => {
           bundleId 
         }));
       }
+
+      // Synchronize transactions with latest blockhash
+      // This already includes validation, so we don't need a separate validation step
+      const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
+      const flattenedTransactions = synchronizedTransactionGroups.flat();
+      verifyBlockhash(flattenedTransactions);
       
-      console.log('Simulating transactions...');
+      console.log('Simulating full bundle with assertions...');
       const simulationResult = await jitoService.simulateTransactions(flattenedTransactions);
       
       if (!simulationResult.isValid) {
-        console.error('Simulation failed:', simulationResult.error);
-        setSimulationStatus('failed');
-        await updateBundleStatus(bundleId, 'failed', { 
-          error: simulationResult.error || 'Simulation failed', 
-          details: simulationResult.details 
-        });
-        
-        // Use the specific error from the simulation result if available
-        toast({
-          title: "Simulation Failed",
-          description: simulationResult.error || "Malicious activity detected in the bundle",
-          variant: "destructive",
-        });
+        // Now we differentiate between normal errors and malicious activity
+        if (simulationResult.normalErrors) {
+          console.warn('Simulation has normal errors:', simulationResult.error);
+          setSimulationStatus('failed');
+          await updateBundleStatus(bundleId, 'failed', { 
+            error: simulationResult.error || 'Simulation failed with normal errors', 
+            details: simulationResult.details,
+            normalErrors: true
+          });
+          
+          toast({
+            title: "Simulation Failed",
+            description: simulationResult.error || "Transaction errors detected",
+            variant: "destructive",
+          });
+        } else {
+          // This is malicious activity
+          console.error('Simulation detected malicious activity:', simulationResult.error);
+          setSimulationStatus('failed');
+          await updateBundleStatus(bundleId, 'failed', { 
+            error: simulationResult.error || 'Malicious activity detected', 
+            details: simulationResult.details,
+            normalErrors: false
+          });
+          
+          toast({
+            title: "Malicious Activity Detected",
+            description: simulationResult.error || "Potential malicious activity detected in the bundle",
+            variant: "destructive",
+          });
+        }
         
         return transactions.map(() => ({ 
           success: false, 
@@ -239,17 +266,17 @@ export const useBundleOperations = () => {
       await setWalletContext(publicKey);
       console.log('Starting bundle execution process');
       
+      // First, verify accounts exist before any synchronization
+      const accountVerification = await verifyAccounts(transactions);
+      if (!accountVerification.valid) {
+        throw new Error(accountVerification.error || 'Account verification failed');
+      }
+      
       // Synchronize transactions with latest blockhash
       const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
       const flattenedTransactions = synchronizedTransactionGroups.flat();
       verifyBlockhash(flattenedTransactions);
       console.log('Transactions synchronized and verified before signing');
-
-      // Verify accounts exist before execution
-      const accountVerification = await verifyAccounts(flattenedTransactions);
-      if (!accountVerification.valid) {
-        throw new Error(accountVerification.error || 'Account verification failed');
-      }
 
       // Sign all transactions
       console.log("Signing all transactions...");
@@ -274,6 +301,12 @@ export const useBundleOperations = () => {
           throw new Error(`Transaction ${index} is missing signatures after signing`);
         }
       });
+
+      // Check if bundle will be valid when submitted
+      const simulationResult = await jitoService.simulateTransactions(signedTransactions);
+      if (!simulationResult.isValid) {
+        throw new Error(`Bundle simulation failed: ${simulationResult.error}`);
+      }
 
       console.log("All transactions signed and verified, submitting bundle to Jito...");
       const result = await jitoService.submitBundle(signedTransactions);
