@@ -11,7 +11,7 @@ import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 
 // Correct Lighthouse Program ID on Mainnet (Jito's official deployment)
-const LIGHTHOUSE_PROGRAM_ID = new PublicKey("LightHf584t3j1LwXj9MiKRt3R6xZD5sBtKoLPRe2q9C");
+const LIGHTHOUSE_PROGRAM_ID = new PublicKey("jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH");
 
 interface AssertionResult {
   success: boolean;
