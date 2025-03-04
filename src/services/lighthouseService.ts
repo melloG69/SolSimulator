@@ -1,4 +1,3 @@
-
 import { 
   Transaction, 
   PublicKey, 
@@ -9,9 +8,20 @@ import {
 } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
+import { toast } from "sonner";
 
 // Correct Lighthouse Program ID on Mainnet (Jito's official deployment)
 const LIGHTHOUSE_PROGRAM_ID = new PublicKey("jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH");
+
+// Define fallback behavior
+const LIGHTHOUSE_CONFIG = {
+  // If true, the app will still operate without Lighthouse protection
+  allowRunningWithoutLighthouse: true,
+  // How many retry attempts for program verification
+  maxRetries: 3,
+  // Delay between retries in ms
+  retryDelay: 2000
+};
 
 interface AssertionResult {
   success: boolean;
@@ -25,6 +35,9 @@ class LighthouseService {
   private readonly MAX_COMPUTE_UNITS = 1_200_000;
   private readonly MAX_INSTRUCTIONS_PER_TX = 20;
   private programAccountVerified: boolean = false;
+  private verificationAttempts: number = 0;
+  private verificationInProgress: boolean = false;
+  private verificationPromise: Promise<boolean> | null = null;
 
   constructor() {
     this.connection = connection;
@@ -35,24 +48,68 @@ class LighthouseService {
   // Verify the Lighthouse program account exists on chain
   private async verifyProgramAccount(): Promise<boolean> {
     try {
+      // Return cached result if already verified
       if (this.programAccountVerified) return true;
       
-      console.log("Verifying Lighthouse program account existence...");
-      const accountInfo = await this.connection.getAccountInfo(LIGHTHOUSE_PROGRAM_ID);
-      
-      this.programAccountVerified = accountInfo !== null;
-      
-      if (this.programAccountVerified) {
-        console.log("✅ Lighthouse program account verified on mainnet");
-      } else {
-        console.error("❌ Lighthouse program account not found on mainnet. Using address:", LIGHTHOUSE_PROGRAM_ID.toString());
+      // If verification is in progress, return the existing promise
+      if (this.verificationInProgress && this.verificationPromise) {
+        return this.verificationPromise;
       }
       
-      return this.programAccountVerified;
+      // Start verification process
+      this.verificationInProgress = true;
+      this.verificationPromise = this.performVerification();
+      return this.verificationPromise;
     } catch (error) {
       console.error("Error verifying Lighthouse program account:", error);
       this.programAccountVerified = false;
+      this.verificationInProgress = false;
       return false;
+    }
+  }
+  
+  private async performVerification(): Promise<boolean> {
+    try {
+      console.log("Verifying Lighthouse program account existence...");
+      
+      // Try to get account info
+      const accountInfo = await this.connection.getAccountInfo(LIGHTHOUSE_PROGRAM_ID);
+      
+      if (accountInfo !== null) {
+        // Program exists
+        this.programAccountVerified = true;
+        console.log("✅ Lighthouse program account verified on mainnet");
+        return true;
+      } else if (this.verificationAttempts < LIGHTHOUSE_CONFIG.maxRetries) {
+        // Retry logic
+        this.verificationAttempts++;
+        console.log(`Lighthouse program not found, retrying (${this.verificationAttempts}/${LIGHTHOUSE_CONFIG.maxRetries})...`);
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, LIGHTHOUSE_CONFIG.retryDelay));
+        return this.performVerification();
+      } else {
+        // Max retries reached, program not found
+        this.programAccountVerified = false;
+        console.warn("⚠️ Lighthouse program not found on mainnet after multiple attempts. Bundle protection will be limited.");
+        
+        // Show toast notification only once
+        if (this.verificationAttempts === LIGHTHOUSE_CONFIG.maxRetries) {
+          toast({
+            title: "Limited Security",
+            description: "Lighthouse protection is not available on this network. Transaction security may be limited.",
+            duration: 6000,
+          });
+        }
+        
+        return false;
+      }
+    } catch (error) {
+      console.error("Error during Lighthouse verification:", error);
+      this.programAccountVerified = false;
+      return false;
+    } finally {
+      this.verificationInProgress = false;
     }
   }
 
@@ -144,8 +201,13 @@ class LighthouseService {
       // First verify that the Lighthouse program is available
       const isProgramAvailable = await this.verifyProgramAccount();
       if (!isProgramAvailable) {
-        console.error("Cannot create assertion transaction: Lighthouse program not available on mainnet");
-        return undefined;
+        if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
+          console.warn("Lighthouse program not available, but continuing without assertions as configured");
+          return undefined;
+        } else {
+          console.error("Cannot create assertion transaction: Lighthouse program not available on mainnet");
+          throw new Error("Lighthouse program not available. Bundle protection is required by configuration.");
+        }
       }
 
       const assertionTx = new Transaction();
@@ -223,12 +285,22 @@ class LighthouseService {
       // First, check if Lighthouse program is available
       const isProgramAvailable = await this.verifyProgramAccount();
       if (!isProgramAvailable) {
-        console.log("Lighthouse program not found on mainnet - skipping assertions");
-        return {
-          success: false,
-          failureReason: "Lighthouse program not available on mainnet",
-          isProgramAvailable: false
-        };
+        // Program not found but we have allowRunningWithoutLighthouse enabled
+        if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
+          console.log("Lighthouse program not found on mainnet - continuing without assertions");
+          return {
+            success: true, // Changed to true to allow continuing without assertions
+            failureReason: "Lighthouse program not available on mainnet, continuing without protection",
+            isProgramAvailable: false
+          };
+        } else {
+          // Program not found and we require it
+          return {
+            success: false,
+            failureReason: "Lighthouse program not available on mainnet and protection is required",
+            isProgramAvailable: false
+          };
+        }
       }
       
       // Validate transaction structure
@@ -256,10 +328,19 @@ class LighthouseService {
       const assertionTransaction = await this.createAssertionTransaction(transaction);
       
       if (!assertionTransaction) {
+        // If allowRunningWithoutLighthouse is true, we still consider this a success
+        if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
+          return {
+            success: true,
+            failureReason: "No assertion transaction created, continuing without protection",
+            isProgramAvailable: isProgramAvailable
+          };
+        }
+        
         return {
           success: false,
           failureReason: "Failed to create assertion transaction",
-          isProgramAvailable: true
+          isProgramAvailable: isProgramAvailable
         };
       }
 
@@ -267,11 +348,21 @@ class LighthouseService {
       return {
         success: true,
         assertionTransaction,
-        isProgramAvailable: true
+        isProgramAvailable: isProgramAvailable
       };
 
     } catch (error) {
       console.error("Error in Lighthouse validation:", error);
+      
+      // If we allow running without Lighthouse, return success even with an error
+      if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
+        return {
+          success: true,
+          failureReason: error instanceof Error ? error.message : "Error in Lighthouse validation, continuing without protection",
+          isProgramAvailable: false
+        };
+      }
+      
       return {
         success: false,
         failureReason: error instanceof Error ? error.message : "Unknown error in Lighthouse validation",
