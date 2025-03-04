@@ -95,11 +95,7 @@ class LighthouseService {
         
         // Show toast notification only once
         if (this.verificationAttempts === LIGHTHOUSE_CONFIG.maxRetries) {
-          toast({
-            title: "Limited Security",
-            description: "Lighthouse protection is not available on this network. Transaction security may be limited.",
-            duration: 6000,
-          });
+          toast("Lighthouse protection is not available on this network. Transaction security may be limited.");
         }
         
         return false;

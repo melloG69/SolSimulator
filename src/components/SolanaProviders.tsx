@@ -1,4 +1,3 @@
-
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -7,6 +6,7 @@ import { connection } from '@/lib/solana';
 import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
 import { lighthouseService } from "@/services/lighthouseService";
+import { Transaction } from '@solana/web3.js';
 
 interface SolanaProvidersProps {
   children: ReactNode;
@@ -19,34 +19,28 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
   useEffect(() => {
     const checkDependencies = async () => {
       try {
-        // Check if required globals are available
         if (typeof window === 'undefined' || !window.Buffer || !window.process) {
           throw new Error('Required browser dependencies not found');
         }
 
-        // Add timeout for connection check
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Connection timeout')), 15000);
         });
 
-        // Try to get version with timeout
         const versionPromise = connection.getVersion();
         const version = await Promise.race([versionPromise, timeoutPromise]);
 
         console.log('Successfully connected to Solana network:', version);
         
-        // Pre-verify Lighthouse program availability (but don't block on it)
         lighthouseService.buildAssertions(new Transaction())
           .catch(error => {
             console.warn("Failed to initialize Lighthouse service:", error);
-            // We don't fail the app initialization for this
           });
         
         setIsReady(true);
       } catch (error) {
         console.error('Failed to initialize Solana providers:', error);
         
-        // Show more specific error messages based on error type
         if (error instanceof Error) {
           if (error.message === 'Connection timeout') {
             toast.error('Connection to Solana network timed out. Please check your internet connection and refresh.');
@@ -63,7 +57,6 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
 
     checkDependencies();
 
-    // Cleanup function
     return () => {
       setIsReady(false);
     };
