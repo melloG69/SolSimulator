@@ -1,4 +1,3 @@
-
 import { Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgram } from "@solana/web3.js";
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
@@ -69,7 +68,6 @@ class JitoService {
       };
     }
 
-    // Only check signatures if explicitly required (during submission, not simulation)
     if (requireSignatures) {
       const hasSignatures = transactions.every(tx => {
         if (!tx.feePayer) return false;
@@ -140,14 +138,12 @@ class JitoService {
     isMaliciousActivity: boolean; 
     message: string; 
   } {
-    // Convert error to string for easier parsing
     const errorString = typeof error === 'string' 
       ? error 
       : error instanceof Error 
         ? error.message 
         : JSON.stringify(error);
     
-    // Common error patterns and their classifications
     const knownNormalErrors = [
       'insufficient funds',
       'insufficient lamports',
@@ -171,7 +167,6 @@ class JitoService {
       'validation constraint violated'
     ];
     
-    // Check if this is a known normal error
     for (const pattern of knownNormalErrors) {
       if (errorString.toLowerCase().includes(pattern.toLowerCase())) {
         return {
@@ -182,7 +177,6 @@ class JitoService {
       }
     }
     
-    // Check if this is a potential malicious pattern
     for (const pattern of maliciousPatterns) {
       if (errorString.toLowerCase().includes(pattern.toLowerCase())) {
         return {
@@ -193,7 +187,6 @@ class JitoService {
       }
     }
     
-    // If we can't classify it, treat as a normal error but with a clear message
     return {
       isNormalError: true,
       isMaliciousActivity: false,
@@ -216,18 +209,16 @@ class JitoService {
     }
 
     try {
-      // Check basic bundle constraints but don't require signatures for simulation
       const bundleValidation = this.validateBundleConstraints(transactions, false);
       if (!bundleValidation.isValid) {
         console.error("Bundle constraint validation failed:", bundleValidation.error);
         return { 
           isValid: false, 
           error: bundleValidation.error,
-          normalErrors: true // Bundle constraints are normal errors
+          normalErrors: true
         };
       }
 
-      // Simulate each transaction to check for errors
       const simulationResults = await Promise.all(
         transactions.map(async (tx) => {
           if (!tx.recentBlockhash) {
@@ -242,7 +233,6 @@ class JitoService {
           try {
             const simulation = await this.connection.simulateTransaction(tx);
             if (simulation.value.err) {
-              // Classify the error
               const errorClassification = this.classifySimulationError(simulation.value.err);
               
               return { 
@@ -255,7 +245,6 @@ class JitoService {
             }
             return { success: true, details: simulation.value };
           } catch (error) {
-            // Classify caught errors too
             const errorClassification = this.classifySimulationError(error);
             
             return { 
@@ -269,19 +258,15 @@ class JitoService {
         })
       );
 
-      // Check for malicious activity by analyzing simulation results
-      // Only look for actual malicious activity, not normal errors
       const maliciousActivity = simulationResults.some(result => 
         !result.success && result.isMaliciousActivity === true
       );
       
-      // If there are only normal errors (not malicious), we may allow the bundle
       const hasOnlyNormalErrors = simulationResults.some(result => 
         !result.success && result.isNormalError === true
       );
 
       if (maliciousActivity) {
-        // Get only the malicious results
         const maliciousResults = simulationResults.filter(r => 
           !r.success && r.isMaliciousActivity === true
         );
@@ -295,7 +280,6 @@ class JitoService {
           normalErrors: false
         };
       } else if (hasOnlyNormalErrors && !options.skipLighthouseCheck) {
-        // If there are normal errors but not malicious ones
         const failedResults = simulationResults.filter(r => !r.success);
         const errorMessages = failedResults.map(r => r.error).join('; ');
         console.log("Bundle has normal errors (not malicious activity):", errorMessages);
@@ -312,7 +296,6 @@ class JitoService {
       return { isValid: true, details: simulationResults };
     } catch (error) {
       console.error("Error during transaction simulation:", error);
-      // Classify the overall error
       const errorClassification = this.classifySimulationError(error);
       
       return { 
@@ -327,7 +310,6 @@ class JitoService {
     try {
       console.log("Starting bundle submission process");
       
-      // For submission, we validate with signature requirement
       const bundleValidation = this.validateBundleConstraints(transactions, true);
       if (!bundleValidation.isValid) {
         const error = `Bundle validation failed: ${bundleValidation.error}`;
@@ -338,7 +320,6 @@ class JitoService {
       
       console.log("Preparing transactions for bundle submission");
       
-      // Debug log signature information
       for (const tx of transactions) {
         console.log('Transaction signatures:', tx.signatures.map(sig => ({
           pubkey: sig.publicKey.toBase58(),
@@ -346,26 +327,18 @@ class JitoService {
         })));
       }
 
-      // Properly serialize transactions for Jito API format
       const encodedTransactions = transactions.map(tx => {
         const serialized = tx.serialize();
         console.log(`Serialized transaction (${serialized.length} bytes)`);
         return Buffer.from(serialized).toString('base64');
       });
 
-      // Format directly according to Jito API requirements
-      // This is the correct format per Jito documentation
-      const bundleParams = {
-        transactions: encodedTransactions
-      };
-
-      console.log("Submitting bundle to Jito API with format:", JSON.stringify(bundleParams, null, 2));
+      console.log("Submitting bundle to Jito API with corrected format");
       
-      // Send the correctly formatted bundle parameters
       const response = await this.makeRequest(
         this.getApiUrl('bundles'),
         'sendBundle',
-        [bundleParams]
+        [encodedTransactions]
       );
 
       if (response.error) {
