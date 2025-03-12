@@ -1,4 +1,3 @@
-
 import { 
   Transaction, 
   PublicKey, 
@@ -8,13 +7,14 @@ import {
   ComputeBudgetProgram,
   Cluster
 } from "@solana/web3.js";
-import { connection } from "@/lib/solana";
+import { connection, ExtendedCluster } from "@/lib/solana";
 import { Buffer } from 'buffer';
 import { toast } from "sonner";
 
 // Lighthouse Program IDs for different networks
-const LIGHTHOUSE_PROGRAM_IDS = {
-  mainnet: "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH", // Jito's official deployment on mainnet
+const LIGHTHOUSE_PROGRAM_IDS: Record<ExtendedCluster, string> = {
+  "mainnet-beta": "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH", // Jito's official deployment on mainnet
+  mainnet: "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH",  // Same as mainnet-beta
   devnet: "LtrZoGovHuQo5hUmKFhgkRQ9PwG8MpE2fP4KuXd9m2o",  // Devnet deployment
   testnet: "LtrZoGovHuQo5hUmKFhgkRQ9PwG8MpE2fP4KuXd9m2o", // Same as devnet for now
   // For development/testing when program doesn't exist:
@@ -30,7 +30,7 @@ const LIGHTHOUSE_CONFIG = {
   // Delay between retries in ms
   retryDelay: 2000,
   // Default to devnet for testing
-  defaultCluster: "devnet" as Cluster
+  defaultCluster: "devnet" as ExtendedCluster
 };
 
 interface AssertionResult {
@@ -48,7 +48,7 @@ class LighthouseService {
   private verificationAttempts: number = 0;
   private verificationInProgress: boolean = false;
   private verificationPromise: Promise<boolean> | null = null;
-  private currentCluster: Cluster;
+  private currentCluster: ExtendedCluster;
   private lighthouseProgramId: PublicKey;
 
   constructor() {
@@ -59,7 +59,7 @@ class LighthouseService {
     console.log(`Detected network: ${this.currentCluster}`);
     
     // Set program ID based on detected cluster
-    const programIdString = LIGHTHOUSE_PROGRAM_IDS[this.currentCluster as keyof typeof LIGHTHOUSE_PROGRAM_IDS] || 
+    const programIdString = LIGHTHOUSE_PROGRAM_IDS[this.currentCluster] || 
                           LIGHTHOUSE_PROGRAM_IDS[LIGHTHOUSE_CONFIG.defaultCluster];
     
     this.lighthouseProgramId = new PublicKey(programIdString);
@@ -70,7 +70,7 @@ class LighthouseService {
   }
   
   // Detect the current Solana network from connection
-  private detectNetwork(): Cluster {
+  private detectNetwork(): ExtendedCluster {
     const endpoint = this.connection.rpcEndpoint.toLowerCase();
     
     if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1')) {

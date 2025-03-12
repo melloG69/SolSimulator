@@ -1,11 +1,15 @@
 
 import { Connection, PublicKey, Transaction, VersionedTransaction, Cluster } from "@solana/web3.js";
 
+// Create an extended type for Cluster that includes our custom values
+export type ExtendedCluster = Cluster | "mainnet" | "localnet";
+
 // API Keys
 export const HELIUS_API_KEY = "31befc63-acf8-4929-b0c6-21f5177679aa";
 
 // RPC Endpoints
-const RPC_ENDPOINTS = {
+const RPC_ENDPOINTS: Record<ExtendedCluster, string> = {
+  "mainnet-beta": `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`,
   mainnet: `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`,
   devnet: "https://api.devnet.solana.com",
   testnet: "https://api.testnet.solana.com",
@@ -14,15 +18,15 @@ const RPC_ENDPOINTS = {
 
 // Determine which network to use - default to devnet for development
 // In a production app, you might want to read this from an environment variable
-const SOLANA_CLUSTER: Cluster = 
-  (import.meta.env.VITE_SOLANA_CLUSTER as Cluster) || 
+const SOLANA_CLUSTER: ExtendedCluster = 
+  (import.meta.env.VITE_SOLANA_CLUSTER as ExtendedCluster) || 
   (process.env.NODE_ENV === 'production' ? 'mainnet' : 'devnet');
 
 console.log(`Using Solana ${SOLANA_CLUSTER} network`);
 
 // Get the appropriate RPC endpoint
-const getRpcEndpoint = (cluster: Cluster): string => {
-  return RPC_ENDPOINTS[cluster as keyof typeof RPC_ENDPOINTS] || RPC_ENDPOINTS.devnet;
+const getRpcEndpoint = (cluster: ExtendedCluster): string => {
+  return RPC_ENDPOINTS[cluster] || RPC_ENDPOINTS.devnet;
 };
 
 const rpcEndpoint = getRpcEndpoint(SOLANA_CLUSTER);
