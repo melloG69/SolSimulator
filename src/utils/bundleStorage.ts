@@ -1,7 +1,4 @@
 
-import { Json } from "@/integrations/supabase/types";
-import { toast } from "sonner";
-
 // In-memory storage as fallback if localStorage is not available
 let memoryStorage: Record<string, any> = {};
 
@@ -32,7 +29,6 @@ export const setWalletContext = async (walletAddress: string) => {
     return { success: true };
   } catch (error) {
     console.error("Error setting wallet context:", error);
-    toast("Failed to store wallet information locally");
     return { 
       success: false, 
       error: error instanceof Error ? error.message : "Unknown error" 
@@ -94,7 +90,7 @@ export const createBundle = async (bundleId: string, walletAddress: string) => {
 export const updateBundleStatus = async (
   bundleId: string, 
   status: 'failed' | 'simulated' | 'executed', 
-  simulationResult: Json
+  simulationResult: any
 ) => {
   try {
     // Get existing bundles
