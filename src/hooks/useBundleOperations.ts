@@ -2,10 +2,10 @@
 import { Transaction } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
-import { setWalletContext, createBundle, updateBundleStatus } from "@/utils/supabaseUtils";
 import { connection } from "@/lib/solana";
 import { SimulationResult } from "./useBundleState";
 import { lighthouseService } from "@/services/lighthouseService";
+import { setWalletContext, createBundle, updateBundleStatus } from "@/utils/bundleStorage";
 
 export const useBundleOperations = () => {
   const { toast } = useToast();
@@ -130,15 +130,10 @@ export const useBundleOperations = () => {
       // Create a unique bundle ID
       const bundleId = crypto.randomUUID();
       
-      // Try to set wallet context, but continue if Supabase is not available
-      try {
-        await setWalletContext(publicKey);
-        await createBundle(bundleId, publicKey);
-        console.log('Bundle created with ID:', bundleId);
-      } catch (error) {
-        console.warn('Supabase connection error, continuing without persistence:', error);
-        // Continue without Supabase - the app can still function without it
-      }
+      // Store wallet context and bundle information locally
+      await setWalletContext(publicKey);
+      await createBundle(bundleId, publicKey);
+      console.log('Bundle created with ID:', bundleId);
 
       // First, verify accounts exist before any synchronization
       const accountVerification = await verifyAccounts(transactions);
@@ -146,14 +141,9 @@ export const useBundleOperations = () => {
         console.error('Account verification failed:', accountVerification.error);
         setSimulationStatus('failed');
         
-        try {
-          await updateBundleStatus(bundleId, 'failed', { 
-            error: accountVerification.error || 'Account verification failed'
-          });
-        } catch (err) {
-          console.warn('Failed to update bundle status in Supabase:', err);
-          // Continue without Supabase updates
-        }
+        await updateBundleStatus(bundleId, 'failed', { 
+          error: accountVerification.error || 'Account verification failed'
+        });
         
         toast({
           title: "Account Error",
@@ -183,16 +173,11 @@ export const useBundleOperations = () => {
           console.warn('Simulation has normal errors:', simulationResult.error);
           setSimulationStatus('failed');
           
-          try {
-            await updateBundleStatus(bundleId, 'failed', { 
-              error: simulationResult.error || 'Simulation failed with normal errors', 
-              details: simulationResult.details,
-              normalErrors: true
-            });
-          } catch (err) {
-            console.warn('Failed to update bundle status in Supabase:', err);
-            // Continue without Supabase updates
-          }
+          await updateBundleStatus(bundleId, 'failed', { 
+            error: simulationResult.error || 'Simulation failed with normal errors', 
+            details: simulationResult.details,
+            normalErrors: true
+          });
           
           toast({
             title: "Simulation Failed",
@@ -204,16 +189,11 @@ export const useBundleOperations = () => {
           console.error('Simulation detected malicious activity:', simulationResult.error);
           setSimulationStatus('failed');
           
-          try {
-            await updateBundleStatus(bundleId, 'failed', { 
-              error: simulationResult.error || 'Malicious activity detected', 
-              details: simulationResult.details,
-              normalErrors: false
-            });
-          } catch (err) {
-            console.warn('Failed to update bundle status in Supabase:', err);
-            // Continue without Supabase updates
-          }
+          await updateBundleStatus(bundleId, 'failed', { 
+            error: simulationResult.error || 'Malicious activity detected', 
+            details: simulationResult.details,
+            normalErrors: false
+          });
           
           toast({
             title: "Malicious Activity Detected",
@@ -231,12 +211,7 @@ export const useBundleOperations = () => {
 
       setSimulationStatus('success');
       
-      try {
-        await updateBundleStatus(bundleId, 'simulated', { success: true });
-      } catch (err) {
-        console.warn('Failed to update bundle status in Supabase:', err);
-        // Continue without Supabase updates
-      }
+      await updateBundleStatus(bundleId, 'simulated', { success: true });
       
       toast({
         title: "Simulation Complete",
@@ -290,13 +265,8 @@ export const useBundleOperations = () => {
     setExecutionStatus('idle');
     
     try {
-      // Try to set wallet context, but continue if Supabase is not available
-      try {
-        await setWalletContext(publicKey);
-      } catch (error) {
-        console.warn('Supabase connection error, continuing without context:', error);
-        // Continue without Supabase - the app can still function without it
-      }
+      // Store wallet context locally
+      await setWalletContext(publicKey);
       
       console.log('Starting bundle execution process');
       

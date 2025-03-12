@@ -1,3 +1,4 @@
+
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -7,8 +8,6 @@ import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
 import { lighthouseService } from "@/services/lighthouseService";
 import { Transaction } from '@solana/web3.js';
-import { supabase } from "@/integrations/supabase/client";
-import { PostgrestResponse } from '@supabase/supabase-js';
 
 interface SolanaProvidersProps {
   children: ReactNode;
@@ -19,8 +18,7 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
   const [networkStatus, setNetworkStatus] = useState<{
     solana: boolean;
     lighthouse: boolean;
-    supabase: boolean;
-  }>({ solana: false, lighthouse: false, supabase: false });
+  }>({ solana: false, lighthouse: false });
   
   const wallets = [new PhantomWalletAdapter()];
 
@@ -64,22 +62,6 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
           setNetworkStatus(prev => ({ ...prev, lighthouse: false }));
           console.warn("Failed to initialize Lighthouse service:", error);
           // Don't block app initialization for Lighthouse issues
-        }
-        
-        // Check Supabase connection
-        try {
-          const response: PostgrestResponse<any> = await Promise.race([
-            supabase.from('transaction_bundles').select('id').limit(1),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 5000))
-          ]) as PostgrestResponse<any>;
-          
-          if (response.error) throw response.error;
-          setNetworkStatus(prev => ({ ...prev, supabase: true }));
-        } catch (error) {
-          setNetworkStatus(prev => ({ ...prev, supabase: false }));
-          console.warn("Supabase connection failed:", error);
-          toast("Database connection unavailable. Some features will be limited.");
-          // Don't block app initialization for Supabase issues
         }
         
         // Set ready state even if some services failed
@@ -127,10 +109,6 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
       <div className="flex items-center gap-2">
         <div className={`w-2 h-2 rounded-full ${networkStatus.lighthouse ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
         <span className="text-white/80">Lighthouse Protection</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full ${networkStatus.supabase ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-        <span className="text-white/80">Database Connection</span>
       </div>
     </div>
   );

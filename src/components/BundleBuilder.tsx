@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -109,7 +110,7 @@ const BundleBuilder = () => {
           </Alert>
         )}
         
-        <Alert variant="default" className="mb-4 bg-gray-800">
+        <Alert className="mb-4 bg-gray-800">
           <Info className="h-4 w-4" />
           <AlertTitle>Demo Mode</AlertTitle>
           <AlertDescription>
