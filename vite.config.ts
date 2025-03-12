@@ -34,7 +34,6 @@ export default defineConfig(({ mode }) => ({
       target: 'esnext',
     },
     include: [
-      '@supabase/supabase-js',
       'buffer',
       '@solana/web3.js',
       '@solana/spl-token',
@@ -51,7 +50,6 @@ export default defineConfig(({ mode }) => ({
     target: 'esnext',
     commonjsOptions: {
       include: [
-        /@supabase\/supabase-js/,
         /node_modules/,
         /@solana\/web3\.js/,
         /@solana\/spl-token/,
