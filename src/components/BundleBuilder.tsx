@@ -1,5 +1,5 @@
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useBundleState } from "@/hooks/useBundleState";
@@ -9,6 +9,9 @@ import { TransactionList } from "./bundle/TransactionList";
 import { StatusAlerts } from "./bundle/StatusAlerts";
 import { TransactionControls } from "./bundle/TransactionControls";
 import { BundleActions } from "./bundle/BundleActions";
+import { lighthouseService } from "@/services/lighthouseService";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Terminal, AlertTriangle, Info } from "lucide-react";
 
 const BundleBuilder = () => {
   const {
@@ -29,6 +32,21 @@ const BundleBuilder = () => {
   const { publicKey, signTransaction, connected } = useWallet();
   const { addTransaction, addMaliciousTransaction } = useTransactionManager(publicKey);
   const { simulateBundle, executeBundle } = useBundleOperations();
+  const [lighthouseAvailable, setLighthouseAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkLighthouse = async () => {
+      try {
+        const status = await lighthouseService.isProgramAvailable();
+        setLighthouseAvailable(status);
+      } catch (error) {
+        console.error("Error checking Lighthouse availability:", error);
+        setLighthouseAvailable(false);
+      }
+    };
+    
+    checkLighthouse();
+  }, []);
 
   const handleAddTransaction = useCallback(async () => {
     const newTransaction = await addTransaction();
@@ -81,6 +99,27 @@ const BundleBuilder = () => {
           </div>
           <WalletMultiButton />
         </div>
+        
+        {lighthouseAvailable === false && (
+          <Alert variant="warning" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Limited Protection</AlertTitle>
+            <AlertDescription>
+              Lighthouse program is not available on this network. Transaction security will be limited.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        <Alert variant="default" className="mb-4 bg-gray-800">
+          <Info className="h-4 w-4" />
+          <AlertTitle>Demo Mode</AlertTitle>
+          <AlertDescription>
+            <p>This demo allows testing of transaction bundles with Lighthouse protection. Add transactions to create a bundle, then simulate to check for malicious activity.</p>
+            <p className="mt-2 text-xs text-gray-400">
+              Note: Some services may have limited functionality depending on network availability.
+            </p>
+          </AlertDescription>
+        </Alert>
         
         <div className="space-y-4">
           {connected && publicKey && (
