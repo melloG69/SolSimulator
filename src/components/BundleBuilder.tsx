@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -32,16 +31,16 @@ const BundleBuilder = () => {
   const { publicKey, signTransaction, connected } = useWallet();
   const { addTransaction, addMaliciousTransaction } = useTransactionManager(publicKey);
   const { simulateBundle, executeBundle } = useBundleOperations();
-  const [lighthouseAvailable, setLighthouseAvailable] = useState<boolean | null>(null);
+  const [lighthouseStatus, setLighthouseStatus] = useState<boolean | null>(null);
 
   useEffect(() => {
     const checkLighthouse = async () => {
       try {
-        const status = await lighthouseService.isProgramAvailable();
-        setLighthouseAvailable(status);
+        const result = await lighthouseService.buildAssertions({} as any);
+        setLighthouseStatus(result.isProgramAvailable ?? false);
       } catch (error) {
         console.error("Error checking Lighthouse availability:", error);
-        setLighthouseAvailable(false);
+        setLighthouseStatus(false);
       }
     };
     
@@ -100,8 +99,8 @@ const BundleBuilder = () => {
           <WalletMultiButton />
         </div>
         
-        {lighthouseAvailable === false && (
-          <Alert variant="warning" className="mb-4">
+        {lighthouseStatus === false && (
+          <Alert variant="destructive" className="mb-4">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Limited Protection</AlertTitle>
             <AlertDescription>

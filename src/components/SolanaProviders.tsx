@@ -1,4 +1,3 @@
-
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -8,6 +7,8 @@ import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
 import { lighthouseService } from "@/services/lighthouseService";
 import { Transaction } from '@solana/web3.js';
+import { supabase } from "@/integrations/supabase/client";
+import { PostgrestResponse } from '@supabase/supabase-js';
 
 interface SolanaProvidersProps {
   children: ReactNode;
@@ -67,17 +68,17 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
         
         // Check Supabase connection
         try {
-          const { data, error } = await Promise.race([
+          const response: PostgrestResponse<any> = await Promise.race([
             supabase.from('transaction_bundles').select('id').limit(1),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 5000))
-          ]);
+          ]) as PostgrestResponse<any>;
           
-          if (error) throw error;
+          if (response.error) throw response.error;
           setNetworkStatus(prev => ({ ...prev, supabase: true }));
         } catch (error) {
           setNetworkStatus(prev => ({ ...prev, supabase: false }));
           console.warn("Supabase connection failed:", error);
-          toast.warning("Database connection unavailable. Some features will be limited.");
+          toast("Database connection unavailable. Some features will be limited.");
           // Don't block app initialization for Supabase issues
         }
         
@@ -147,6 +148,3 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     </SolanaErrorBoundary>
   );
 };
-
-// Make sure supabase is imported at the top
-import { supabase } from "@/integrations/supabase/client";
