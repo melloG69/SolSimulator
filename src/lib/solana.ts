@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, VersionedTransaction, Cluster } from "@solana/web3.js";
 
 // Create an extended type for Cluster that includes our custom values
@@ -16,17 +15,20 @@ const RPC_ENDPOINTS: Record<ExtendedCluster, string> = {
   localnet: "http://localhost:8899"
 };
 
-// Determine which network to use - default to devnet for development
-// In a production app, you might want to read this from an environment variable
+// Determine which network to use - default to mainnet-beta for production
 const SOLANA_CLUSTER: ExtendedCluster = 
   (import.meta.env.VITE_SOLANA_CLUSTER as ExtendedCluster) || 
-  (process.env.NODE_ENV === 'production' ? 'mainnet' : 'devnet');
+  (process.env.NODE_ENV === 'production' ? 'mainnet-beta' : 'devnet');
 
 console.log(`Using Solana ${SOLANA_CLUSTER} network`);
 
 // Get the appropriate RPC endpoint
 const getRpcEndpoint = (cluster: ExtendedCluster): string => {
-  return RPC_ENDPOINTS[cluster] || RPC_ENDPOINTS.devnet;
+  // If cluster is 'mainnet', use 'mainnet-beta' endpoint
+  if (cluster === 'mainnet') {
+    return RPC_ENDPOINTS['mainnet-beta'];
+  }
+  return RPC_ENDPOINTS[cluster] || RPC_ENDPOINTS['mainnet-beta'];
 };
 
 const rpcEndpoint = getRpcEndpoint(SOLANA_CLUSTER);

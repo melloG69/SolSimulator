@@ -13,24 +13,19 @@ import { toast } from "sonner";
 
 // Lighthouse Program IDs for different networks
 const LIGHTHOUSE_PROGRAM_IDS: Record<ExtendedCluster, string> = {
-  "mainnet-beta": "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH", // Jito's official deployment on mainnet
-  mainnet: "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH",  // Same as mainnet-beta
+  "mainnet-beta": "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH", // Jito's official deployment
+  mainnet: "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH",  // Alias for mainnet-beta
   devnet: "LtrZoGovHuQo5hUmKFhgkRQ9PwG8MpE2fP4KuXd9m2o",  // Devnet deployment
   testnet: "LtrZoGovHuQo5hUmKFhgkRQ9PwG8MpE2fP4KuXd9m2o", // Same as devnet for now
-  // For development/testing when program doesn't exist:
   localnet: "LighTH8f24FybPCcuLjci7UPpGxgzRfpZU8FQGJGTiwH" // Local validator deployment
 };
 
 // Define fallback behavior
 const LIGHTHOUSE_CONFIG = {
-  // If true, the app will still operate without Lighthouse protection
-  allowRunningWithoutLighthouse: true,
-  // How many retry attempts for program verification
+  allowRunningWithoutLighthouse: false, // Changed to false for mainnet enforcement
   maxRetries: 3,
-  // Delay between retries in ms
   retryDelay: 2000,
-  // Default to devnet for testing
-  defaultCluster: "devnet" as ExtendedCluster
+  defaultCluster: "mainnet-beta" as ExtendedCluster  // Changed default to mainnet-beta
 };
 
 interface AssertionResult {
@@ -80,7 +75,7 @@ class LighthouseService {
     } else if (endpoint.includes('testnet')) {
       return 'testnet';
     } else {
-      return 'mainnet';
+      return 'mainnet-beta'; // Default to mainnet-beta for production
     }
   }
 
