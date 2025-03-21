@@ -11,21 +11,14 @@ import { connection, ExtendedCluster } from "@/lib/solana";
 import { Buffer } from 'buffer';
 import { toast } from "sonner";
 
-// Lighthouse Program IDs for different networks
-const LIGHTHOUSE_PROGRAM_IDS: Record<ExtendedCluster, string> = {
-  "mainnet-beta": "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH", // Jito's official deployment
-  mainnet: "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH",  // Alias for mainnet-beta
-  devnet: "LtrZoGovHuQo5hUmKFhgkRQ9PwG8MpE2fP4KuXd9m2o",  // Devnet deployment
-  testnet: "LtrZoGovHuQo5hUmKFhgkRQ9PwG8MpE2fP4KuXd9m2o", // Same as devnet for now
-  localnet: "LighTH8f24FybPCcuLjci7UPpGxgzRfpZU8FQGJGTiwH" // Local validator deployment
-};
+// Lighthouse Program IDs - only using mainnet in this configuration
+const LIGHTHOUSE_PROGRAM_ID = "jitosGW6AmNQEUyVXXV4SsGZq18k2QCvYqRB9deEYKH"; // Jito's official mainnet deployment
 
-// Define fallback behavior
+// Define behavior
 const LIGHTHOUSE_CONFIG = {
-  allowRunningWithoutLighthouse: false, // Changed to false for mainnet enforcement
+  allowRunningWithoutLighthouse: false, // Mainnet enforcement
   maxRetries: 3,
   retryDelay: 2000,
-  defaultCluster: "mainnet-beta" as ExtendedCluster  // Changed default to mainnet-beta
 };
 
 interface AssertionResult {
@@ -43,40 +36,17 @@ class LighthouseService {
   private verificationAttempts: number = 0;
   private verificationInProgress: boolean = false;
   private verificationPromise: Promise<boolean> | null = null;
-  private currentCluster: ExtendedCluster;
   private lighthouseProgramId: PublicKey;
 
   constructor() {
     this.connection = connection;
     
-    // Detect network and set appropriate program ID
-    this.currentCluster = this.detectNetwork();
-    console.log(`Detected network: ${this.currentCluster}`);
-    
-    // Set program ID based on detected cluster
-    const programIdString = LIGHTHOUSE_PROGRAM_IDS[this.currentCluster] || 
-                          LIGHTHOUSE_PROGRAM_IDS[LIGHTHOUSE_CONFIG.defaultCluster];
-    
-    this.lighthouseProgramId = new PublicKey(programIdString);
-    console.log(`Using Lighthouse program ID: ${this.lighthouseProgramId.toString()}`);
+    // Always use mainnet Lighthouse program ID
+    this.lighthouseProgramId = new PublicKey(LIGHTHOUSE_PROGRAM_ID);
+    console.log(`Using Lighthouse program ID on mainnet: ${this.lighthouseProgramId.toString()}`);
     
     // Verify program account on instantiation
     this.verifyProgramAccount();
-  }
-  
-  // Detect the current Solana network from connection
-  private detectNetwork(): ExtendedCluster {
-    const endpoint = this.connection.rpcEndpoint.toLowerCase();
-    
-    if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1')) {
-      return 'localnet';
-    } else if (endpoint.includes('devnet')) {
-      return 'devnet';
-    } else if (endpoint.includes('testnet')) {
-      return 'testnet';
-    } else {
-      return 'mainnet-beta'; // Default to mainnet-beta for production
-    }
   }
 
   // Verify the Lighthouse program account exists on chain
@@ -95,7 +65,7 @@ class LighthouseService {
       this.verificationPromise = this.performVerification();
       return this.verificationPromise;
     } catch (error) {
-      console.error("Error verifying Lighthouse program account:", error);
+      console.error("Error verifying Lighthouse program account on mainnet:", error);
       this.programAccountVerified = false;
       this.verificationInProgress = false;
       return false;
@@ -104,7 +74,7 @@ class LighthouseService {
   
   private async performVerification(): Promise<boolean> {
     try {
-      console.log(`Verifying Lighthouse program account existence on ${this.currentCluster}...`);
+      console.log("Verifying Lighthouse program account existence on mainnet...");
       
       // Try to get account info
       const accountInfo = await this.connection.getAccountInfo(this.lighthouseProgramId);
@@ -112,12 +82,12 @@ class LighthouseService {
       if (accountInfo !== null) {
         // Program exists
         this.programAccountVerified = true;
-        console.log(`✅ Lighthouse program account verified on ${this.currentCluster}`);
+        console.log("✅ Lighthouse program account verified on mainnet");
         return true;
       } else if (this.verificationAttempts < LIGHTHOUSE_CONFIG.maxRetries) {
         // Retry logic
         this.verificationAttempts++;
-        console.log(`Lighthouse program not found, retrying (${this.verificationAttempts}/${LIGHTHOUSE_CONFIG.maxRetries})...`);
+        console.log(`Lighthouse program not found on mainnet, retrying (${this.verificationAttempts}/${LIGHTHOUSE_CONFIG.maxRetries})...`);
         
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, LIGHTHOUSE_CONFIG.retryDelay));
@@ -125,28 +95,12 @@ class LighthouseService {
       } else {
         // Max retries reached, program not found
         this.programAccountVerified = false;
-        console.warn(`⚠️ Lighthouse program not found on ${this.currentCluster} after multiple attempts. Bundle protection will be limited.`);
-        
-        // If we're on mainnet and the program is not found, this is concerning
-        // For other networks, it's less of an issue
-        if (this.currentCluster === 'mainnet') {
-          toast.warning("Lighthouse protection is not available on mainnet. Transaction security may be limited.");
-        } else {
-          // For non-mainnet, we'll just use a mock implementation for development purposes
-          console.log(`Using mock Lighthouse implementation for ${this.currentCluster}`);
-          
-          // For development purposes, we'll simulate success
-          if (this.currentCluster === 'devnet' || this.currentCluster === 'localnet') {
-            this.programAccountVerified = true;
-            console.log("Development mode: Simulating Lighthouse program availability");
-            return true;
-          }
-        }
-        
+        console.warn("⚠️ Lighthouse program not found on mainnet after multiple attempts. Bundle protection will be limited.");
+        toast.warning("Lighthouse protection is not available on mainnet. Transaction security may be limited.");
         return false;
       }
     } catch (error) {
-      console.error("Error during Lighthouse verification:", error);
+      console.error("Error during Lighthouse verification on mainnet:", error);
       this.programAccountVerified = false;
       return false;
     } finally {
@@ -242,21 +196,13 @@ class LighthouseService {
       // First verify that the Lighthouse program is available
       const isProgramAvailable = await this.verifyProgramAccount();
       
-      // If we're in development mode on devnet/localnet, we can create a mock assertion
-      if (!isProgramAvailable && (this.currentCluster === 'devnet' || this.currentCluster === 'localnet')) {
-        console.log("Creating mock Lighthouse assertion for development");
-        // Create a dummy transaction that won't fail
-        const mockTx = new Transaction();
-        return mockTx;
-      }
-      
       if (!isProgramAvailable) {
         if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
-          console.warn("Lighthouse program not available, but continuing without assertions as configured");
+          console.warn("Lighthouse program not available on mainnet, but continuing without assertions as configured");
           return undefined;
         } else {
-          console.error(`Cannot create assertion transaction: Lighthouse program not available on ${this.currentCluster}`);
-          throw new Error("Lighthouse program not available. Bundle protection is required by configuration.");
+          console.error("Cannot create assertion transaction: Lighthouse program not available on mainnet");
+          throw new Error("Lighthouse program not available on mainnet. Bundle protection is required by configuration.");
         }
       }
 
@@ -275,7 +221,7 @@ class LighthouseService {
       
       // Add compute budget specific assertions if needed
       if (this.hasComputeBudgetInstruction(transaction)) {
-        console.log("Creating compute budget assertions");
+        console.log("Creating compute budget assertions for mainnet");
         assertionTx.add(
           new TransactionInstruction({
             keys: [],
@@ -286,10 +232,10 @@ class LighthouseService {
       }
 
       // If we get here, the assertion transaction is valid
-      console.log("Successfully created Lighthouse assertion transaction");
+      console.log("Successfully created Lighthouse assertion transaction for mainnet");
       return assertionTx;
     } catch (error) {
-      console.error("Error creating assertion transaction:", error);
+      console.error("Error creating assertion transaction on mainnet:", error);
       return undefined;
     }
   }
@@ -330,39 +276,25 @@ class LighthouseService {
     transaction: Transaction
   ): Promise<AssertionResult> {
     try {
-      console.log(`Building Lighthouse assertions for transaction on ${this.currentCluster}`);
+      console.log("Building Lighthouse assertions for transaction on mainnet");
 
       // First, check if Lighthouse program is available
       const isProgramAvailable = await this.verifyProgramAccount();
       
-      // Special handling for development environments
-      if (!isProgramAvailable && (this.currentCluster === 'devnet' || this.currentCluster === 'localnet')) {
-        console.log("Creating mock Lighthouse assertions for development environment");
-        
-        // For development, create a mock assertion transaction
-        const mockAssertionTx = new Transaction();
-        
-        return {
-          success: true,
-          assertionTransaction: mockAssertionTx,
-          isProgramAvailable: true // We pretend it's available in dev mode
-        };
-      }
-      
       if (!isProgramAvailable) {
         // Program not found but we have allowRunningWithoutLighthouse enabled
         if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
-          console.log(`Lighthouse program not found on ${this.currentCluster} - continuing without assertions`);
+          console.log("Lighthouse program not found on mainnet - continuing without assertions");
           return {
-            success: true, // Changed to true to allow continuing without assertions
-            failureReason: `Lighthouse program not available on ${this.currentCluster}, continuing without protection`,
+            success: true, // Allow continuing without assertions
+            failureReason: "Lighthouse program not available on mainnet, continuing without protection",
             isProgramAvailable: false
           };
         } else {
           // Program not found and we require it
           return {
             success: false,
-            failureReason: `Lighthouse program not available on ${this.currentCluster} and protection is required`,
+            failureReason: "Lighthouse program not available on mainnet and protection is required",
             isProgramAvailable: false
           };
         }
@@ -397,19 +329,19 @@ class LighthouseService {
         if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
           return {
             success: true,
-            failureReason: "No assertion transaction created, continuing without protection",
+            failureReason: "No assertion transaction created for mainnet, continuing without protection",
             isProgramAvailable: isProgramAvailable
           };
         }
         
         return {
           success: false,
-          failureReason: "Failed to create assertion transaction",
+          failureReason: "Failed to create assertion transaction for mainnet",
           isProgramAvailable: isProgramAvailable
         };
       }
 
-      console.log("Successfully created Lighthouse assertions");
+      console.log("Successfully created Lighthouse assertions for mainnet");
       return {
         success: true,
         assertionTransaction,
@@ -417,20 +349,20 @@ class LighthouseService {
       };
 
     } catch (error) {
-      console.error("Error in Lighthouse validation:", error);
+      console.error("Error in Lighthouse validation on mainnet:", error);
       
       // If we allow running without Lighthouse, return success even with an error
       if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
         return {
           success: true,
-          failureReason: error instanceof Error ? error.message : "Error in Lighthouse validation, continuing without protection",
+          failureReason: error instanceof Error ? error.message : "Error in Lighthouse validation on mainnet, continuing without protection",
           isProgramAvailable: false
         };
       }
       
       return {
         success: false,
-        failureReason: error instanceof Error ? error.message : "Unknown error in Lighthouse validation",
+        failureReason: error instanceof Error ? error.message : "Unknown error in Lighthouse validation on mainnet",
         isProgramAvailable: false
       };
     }
