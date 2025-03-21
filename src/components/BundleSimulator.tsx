@@ -4,35 +4,33 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useBundleState } from "@/hooks/useBundleState";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
-import { useBundleOperations } from "@/hooks/useBundleOperations";
+import { useSimulationManager } from "@/hooks/useSimulationManager";
 import { TransactionList } from "./bundle/TransactionList";
 import { StatusAlerts } from "./bundle/StatusAlerts";
 import { TransactionControls } from "./bundle/TransactionControls";
-import { BundleActions } from "./bundle/BundleActions";
+import { SimulationActions } from "./bundle/SimulationActions";
 import { lighthouseService } from "@/services/lighthouseService";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, AlertTriangle, Info } from "lucide-react";
+import { Terminal, AlertTriangle, Info, Lightbulb } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
-const BundleBuilder = () => {
+const BundleSimulator = () => {
   const {
     transactions,
     setTransactions,
-    signatures,
-    setSignatures,
     simulationResults,
     setSimulationResults,
     loading,
     setLoading,
     simulationStatus,
     setSimulationStatus,
-    executionStatus,
-    setExecutionStatus
   } = useBundleState();
 
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, connected } = useWallet();
   const { addTransaction, addMaliciousTransaction } = useTransactionManager(publicKey);
-  const { simulateBundle, executeBundle } = useBundleOperations();
+  const { simulateBundle } = useSimulationManager();
   const [lighthouseStatus, setLighthouseStatus] = useState<boolean | null>(null);
+  const [simulationDetails, setSimulationDetails] = useState<any>(null);
 
   useEffect(() => {
     const checkLighthouse = async () => {
@@ -64,38 +62,30 @@ const BundleBuilder = () => {
 
   const handleSimulate = useCallback(async () => {
     if (!publicKey) return;
-    const results = await simulateBundle(
+    
+    const { results, details } = await simulateBundle(
       transactions,
       publicKey.toString(),
       setLoading,
       setSimulationStatus
     );
+    
     if (results) {
       setSimulationResults(results);
+      setSimulationDetails(details);
     }
   }, [transactions, publicKey, setLoading, setSimulationStatus, simulateBundle, setSimulationResults]);
-
-  const handleExecute = useCallback(async () => {
-    if (!publicKey) return;
-    const sigs = await executeBundle(
-      transactions,
-      publicKey.toString(),
-      signTransaction,
-      setLoading,
-      setExecutionStatus
-    );
-    if (sigs) {
-      setSignatures(sigs);
-    }
-  }, [transactions, publicKey, signTransaction, setLoading, setExecutionStatus, executeBundle, setSignatures]);
 
   return (
     <div className="container mx-auto p-4">
       <div className="bg-card rounded-lg p-6 shadow-lg">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-mono text-primary">Jito Bundle Guardrail</h1>
-            <p className="text-sm text-muted-foreground mt-1">Demo Version with Transaction Validation</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-mono text-primary">Solana Bundle Simulator</h1>
+              <Badge variant="outline" className="font-mono">BETA</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">Test transaction bundles with Lighthouse protection</p>
           </div>
           <WalletMultiButton />
         </div>
@@ -105,18 +95,18 @@ const BundleBuilder = () => {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Limited Protection</AlertTitle>
             <AlertDescription>
-              Lighthouse program is not available on this network. Transaction security will be limited.
+              Lighthouse program is not available on this network. Simulation security will be limited.
             </AlertDescription>
           </Alert>
         )}
         
         <Alert className="mb-4 bg-gray-800">
-          <Info className="h-4 w-4" />
-          <AlertTitle>Demo Mode</AlertTitle>
+          <Lightbulb className="h-4 w-4" />
+          <AlertTitle>About Bundle Simulation</AlertTitle>
           <AlertDescription>
-            <p>This demo allows testing of transaction bundles with Lighthouse protection. Add transactions to create a bundle, then simulate to check for malicious activity.</p>
+            <p>Build and simulate transaction bundles with Lighthouse protection. Add transactions to create a bundle, then simulate to analyze their effects and check for malicious activity - all without spending SOL.</p>
             <p className="mt-2 text-xs text-gray-400">
-              Note: Some services may have limited functionality depending on network availability.
+              Powered by Jito, Helius, and Lighthouse for accurate simulations.
             </p>
           </AlertDescription>
         </Alert>
@@ -129,15 +119,16 @@ const BundleBuilder = () => {
             </div>
           )}
 
-          <StatusAlerts simulationStatus={simulationStatus} />
+          <StatusAlerts 
+            simulationStatus={simulationStatus} 
+            details={simulationDetails}
+          />
 
           <div className="bg-black/50 p-4 rounded-md">
             <h2 className="text-secondary font-mono mb-2">Transaction Bundle</h2>
             <div className="space-y-2">
               <TransactionList 
                 transactions={transactions}
-                executionStatus={executionStatus}
-                signatures={signatures}
                 simulationResults={simulationResults}
               />
               <TransactionControls
@@ -148,17 +139,42 @@ const BundleBuilder = () => {
             </div>
           </div>
 
-          <BundleActions
+          <SimulationActions
             onSimulate={handleSimulate}
-            onExecute={handleExecute}
             loading={loading}
             disabled={transactions.length === 0 || !connected}
             simulationStatus={simulationStatus}
           />
+          
+          {simulationStatus === 'success' && simulationDetails && (
+            <div className="bg-black/50 p-4 rounded-md mt-4">
+              <h2 className="text-secondary font-mono mb-2">Simulation Insights</h2>
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-xs text-white/50 mb-1">Bundle Size</h3>
+                    <p className="font-mono">{simulationDetails.bundleSize || 0} transactions</p>
+                  </div>
+                  <div>
+                    <h3 className="text-xs text-white/50 mb-1">Protection Level</h3>
+                    <p className="font-mono">{lighthouseStatus ? 'Lighthouse Enhanced' : 'Basic'}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-xs text-white/50 mb-1">Estimated Fees</h3>
+                    <p className="font-mono">{simulationDetails.estimatedFees || '0.000'} SOL</p>
+                  </div>
+                  <div>
+                    <h3 className="text-xs text-white/50 mb-1">Compute Units</h3>
+                    <p className="font-mono">{simulationDetails.computeUnits || 0} units</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default BundleBuilder;
+export default BundleSimulator;
