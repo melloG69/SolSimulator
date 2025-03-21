@@ -1,7 +1,7 @@
 
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
+import { BrowserRouter, Route, Routes } from "react-router-dom"
 import { ThemeProvider } from "./components/theme-provider"
-import SolanaProviders from "./components/SolanaProviders"
+import { SolanaProviders } from "./components/SolanaProviders"
 import "./App.css"
 import { Toaster } from "@/components/ui/toaster"
 import NotFound from "./pages/NotFound"

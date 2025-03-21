@@ -1,5 +1,5 @@
 
-import { Transaction } from "@solana/web3.js";
+import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
 import { connection } from "@/lib/solana";
@@ -223,5 +223,3 @@ export const useSimulationManager = () => {
     simulateBundle
   };
 };
-
-import { ComputeBudgetProgram } from "@solana/web3.js";
