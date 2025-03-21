@@ -7,7 +7,7 @@ import { connection } from '@/lib/solana';
 import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
 import { lighthouseService } from "@/services/lighthouseService";
-import { Transaction } from '@solana/web3.js';
+import { Transaction, PublicKey } from '@solana/web3.js';
 
 interface SolanaProvidersProps {
   children: ReactNode;
@@ -57,8 +57,8 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
         try {
           // Use an empty transaction for the check - just to determine if Lighthouse is available
           const mockTx = new Transaction();
-          // Set properties to avoid validation errors
-          mockTx.feePayer = connection.rpcEndpoint ? new Uint8Array(32).fill(1) : undefined;
+          // Set properties to avoid validation errors - create a proper PublicKey for feePayer
+          mockTx.feePayer = new PublicKey('11111111111111111111111111111111');
           mockTx.recentBlockhash = "mock";
           
           const lighthouseResult = await lighthouseService.buildAssertions(mockTx);
