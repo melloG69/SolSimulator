@@ -12,8 +12,8 @@ import { Buffer } from 'buffer';
 import { toast } from "sonner";
 
 // Updated Lighthouse Program ID for mainnet
-// This is the official address according to Lighthouse documentation
-const LIGHTHOUSE_PROGRAM_ID = "LighthouseeTPQ1vZWxKFY2qU4h6DYsnLZpQTMkMm54";
+// This is the correct address from official Lighthouse Github repository
+const LIGHTHOUSE_PROGRAM_ID = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
 
 // Define behavior
 const LIGHTHOUSE_CONFIG = {
@@ -43,7 +43,7 @@ class LighthouseService {
   constructor() {
     this.connection = connection;
     
-    // Use mainnet Lighthouse program ID
+    // Use the correct mainnet Lighthouse program ID
     this.lighthouseProgramId = new PublicKey(LIGHTHOUSE_PROGRAM_ID);
     console.log(`Using Lighthouse program ID on mainnet: ${this.lighthouseProgramId.toString()}`);
     

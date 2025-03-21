@@ -1,4 +1,3 @@
-
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -53,7 +52,7 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
           // Continue initialization despite Solana connection errors
         }
         
-        // Check Lighthouse program availability on mainnet
+        // Check Lighthouse program availability on mainnet with the updated program ID
         try {
           // Use an empty transaction for the check - just to determine if Lighthouse is available
           const mockTx = new Transaction();
