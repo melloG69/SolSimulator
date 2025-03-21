@@ -55,8 +55,13 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
         
         // Check Lighthouse program availability on mainnet
         try {
-          // Use an empty transaction for the check
-          const lighthouseResult = await lighthouseService.buildAssertions(new Transaction());
+          // Use an empty transaction for the check - just to determine if Lighthouse is available
+          const mockTx = new Transaction();
+          // Set properties to avoid validation errors
+          mockTx.feePayer = connection.rpcEndpoint ? new Uint8Array(32).fill(1) : undefined;
+          mockTx.recentBlockhash = "mock";
+          
+          const lighthouseResult = await lighthouseService.buildAssertions(mockTx);
           
           setNetworkStatus(prev => ({ 
             ...prev, 
@@ -151,3 +156,5 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     </SolanaErrorBoundary>
   );
 };
+
+export default SolanaProviders;
