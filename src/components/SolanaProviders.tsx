@@ -1,3 +1,4 @@
+
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -168,21 +169,5 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     </SolanaErrorBoundary>
   );
 };
-
-// Show service status indicators when app is ready
-const StatusIndicator = () => (
-  <div className="fixed bottom-4 right-4 bg-black/80 rounded-lg p-2 text-xs flex flex-col gap-1 z-50">
-    <div className="flex items-center gap-2">
-      <div className="w-2 h-2 rounded-full bg-green-500"></div>
-      <span className="text-white/80">Solana mainnet</span>
-    </div>
-    <div className="flex items-center gap-2">
-      <div className="w-2 h-2 rounded-full bg-green-500"></div>
-      <span className="text-white/80">
-        Lighthouse Active
-      </span>
-    </div>
-  </div>
-);
 
 export default SolanaProviders;
