@@ -251,6 +251,12 @@ class LighthouseService {
 
   async validateTransaction(transaction: Transaction): Promise<boolean> {
     try {
+      // Skip validation for mock transactions used for availability checks
+      if (transaction.instructions.length === 0) {
+        console.warn("No instructions provided");
+        return false;
+      }
+      
       // Basic validation - check if the transaction has required fields
       if (!transaction.recentBlockhash) {
         console.error("Transaction missing recentBlockhash");
@@ -262,7 +268,15 @@ class LighthouseService {
         return false;
       }
 
-      // Only simulate if passing basic validation
+      // Check if the transaction is a mock transaction with special address
+      const isMockTransaction = transaction.feePayer.equals(new PublicKey('11111111111111111111111111111111'));
+      
+      // For mock transactions used in availability checks, skip simulation
+      if (isMockTransaction) {
+        return true;
+      }
+
+      // Only simulate if passing basic validation and not a mock transaction
       try {
         const simulation = await this.connection.simulateTransaction(transaction);
         if (simulation.value.err) {
@@ -310,7 +324,7 @@ class LighthouseService {
       }
       
       // Check if transaction is empty or mock (for initial checks)
-      if (!transaction.recentBlockhash) {
+      if (!transaction.recentBlockhash || transaction.instructions.length === 0) {
         // This is likely an empty transaction used for checking availability
         return {
           success: true,

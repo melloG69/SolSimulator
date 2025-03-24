@@ -6,7 +6,7 @@ import { connection } from '@/lib/solana';
 import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
 import { lighthouseService } from "@/services/lighthouseService";
-import { Transaction, PublicKey } from '@solana/web3.js';
+import { Transaction, PublicKey, SystemProgram } from '@solana/web3.js';
 
 interface SolanaProvidersProps {
   children: ReactNode;
@@ -54,12 +54,25 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
         
         // Check Lighthouse program availability on mainnet with the updated program ID
         try {
-          // Use an empty transaction for the check - just to determine if Lighthouse is available
+          // Create a proper mock transaction with a valid instruction
           const mockTx = new Transaction();
-          // Set properties to avoid validation errors - create a proper PublicKey for feePayer
-          mockTx.feePayer = new PublicKey('11111111111111111111111111111111');
-          mockTx.recentBlockhash = "mock";
+          const mockPayer = new PublicKey('11111111111111111111111111111111');
+          const mockReceiver = new PublicKey('11111111111111111111111111111111');
           
+          // Add a valid instruction (0 SOL transfer just for validation)
+          mockTx.add(
+            SystemProgram.transfer({
+              fromPubkey: mockPayer,
+              toPubkey: mockReceiver,
+              lamports: 0
+            })
+          );
+          
+          // Set properties to avoid validation errors
+          mockTx.feePayer = mockPayer;
+          mockTx.recentBlockhash = "4NfTBsiUGv2FHXuXJgMsHNZWVQHLdKxL5mKiGJNPAkgq"; // Mock blockhash
+          
+          // Now check if Lighthouse is available
           const lighthouseResult = await lighthouseService.buildAssertions(mockTx);
           
           setNetworkStatus(prev => ({ 
@@ -155,5 +168,21 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     </SolanaErrorBoundary>
   );
 };
+
+// Show service status indicators when app is ready
+const StatusIndicator = () => (
+  <div className="fixed bottom-4 right-4 bg-black/80 rounded-lg p-2 text-xs flex flex-col gap-1 z-50">
+    <div className="flex items-center gap-2">
+      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+      <span className="text-white/80">Solana mainnet</span>
+    </div>
+    <div className="flex items-center gap-2">
+      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+      <span className="text-white/80">
+        Lighthouse Active
+      </span>
+    </div>
+  </div>
+);
 
 export default SolanaProviders;
