@@ -21,7 +21,10 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     network: string;
   }>({ solana: false, lighthouse: false, network: 'mainnet' });
   
-  const wallets = [new PhantomWalletAdapter()];
+  // Create a properly configured wallet adapter for Phantom
+  const wallets = [
+    new PhantomWalletAdapter({ network: 'mainnet-beta' }) 
+  ];
 
   useEffect(() => {
     const checkDependencies = async () => {
@@ -53,9 +56,9 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
           // Continue initialization despite Solana connection errors
         }
         
-        // Check Lighthouse program availability on mainnet with the updated program ID
+        // Check Lighthouse program availability on mainnet with a proper mock transaction
         try {
-          // Create a proper mock transaction with a valid instruction
+          // Create a proper mock transaction with a valid instruction for testing
           const mockTx = new Transaction();
           const mockPayer = new PublicKey('11111111111111111111111111111111');
           const mockReceiver = new PublicKey('11111111111111111111111111111111');

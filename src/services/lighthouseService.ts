@@ -303,6 +303,16 @@ class LighthouseService {
 
   // Helper to detect if this is just a validation/mock transaction
   private isValidationOnlyTransaction(transaction: Transaction): boolean {
+    // Handle case where transaction may be an empty object or not properly initialized
+    if (!transaction || typeof transaction !== 'object') {
+      return false;
+    }
+    
+    // Check if it has the minimum required properties to be considered a transaction
+    if (!transaction.instructions) {
+      return false;
+    }
+    
     // Check for specific patterns that identify a validation-only transaction:
     
     // 1. Check if it's using the dummy account address
@@ -345,6 +355,15 @@ class LighthouseService {
     try {
       console.log("Building Lighthouse assertions for transaction on mainnet");
 
+      // Handle empty or invalid transaction objects
+      if (!transaction || typeof transaction !== 'object') {
+        return {
+          success: true,
+          failureReason: "Empty or invalid transaction object provided",
+          isProgramAvailable: await this.verifyProgramAccount()
+        };
+      }
+
       // First, check if Lighthouse program is available
       const isProgramAvailable = await this.verifyProgramAccount();
       
@@ -367,10 +386,10 @@ class LighthouseService {
         }
       }
       
-      // Special handling for availability check transactions
-      if (this.isValidationOnlyTransaction(transaction) || 
-          !transaction.instructions || 
-          transaction.instructions.length === 0) {
+      // Special handling for availability check transactions or empty transactions
+      if (!transaction.instructions || 
+          transaction.instructions.length === 0 || 
+          this.isValidationOnlyTransaction(transaction)) {
         return {
           success: true,
           isProgramAvailable: isProgramAvailable
@@ -442,81 +461,6 @@ class LighthouseService {
         failureReason: error instanceof Error ? error.message : "Unknown error in Lighthouse validation on mainnet",
         isProgramAvailable: false
       };
-    }
-  }
-
-  private async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
-    try {
-      // Check for excessive compute units
-      if (this.hasComputeBudgetInstruction(transaction)) {
-        for (const ix of transaction.instructions) {
-          if (this.isComputeBudgetInstruction(ix)) {
-            try {
-              const dataView = Buffer.from(ix.data);
-              // Check if dataView is long enough before reading
-              if (dataView.length >= 5) { // Validate buffer length
-                const units = dataView.readUInt32LE(1);
-                console.log(`Compute units detected: ${units}`);
-                if (units > this.MAX_COMPUTE_UNITS) {
-                  return { 
-                    isMalicious: true, 
-                    reason: `Excessive compute units detected: ${units} > ${this.MAX_COMPUTE_UNITS}` 
-                  };
-                }
-              }
-            } catch (error) {
-              console.error("Error parsing compute budget instruction:", error);
-              // Continue checking other instructions rather than failing immediately
-            }
-          }
-        }
-      }
-
-      // Check for too many instructions (potential DoS vector)
-      if (transaction.instructions.length > this.MAX_INSTRUCTIONS_PER_TX) {
-        return {
-          isMalicious: true,
-          reason: `Too many instructions in transaction: ${transaction.instructions.length} > ${this.MAX_INSTRUCTIONS_PER_TX}`
-        };
-      }
-
-      // Check for system program instructions and validate them
-      for (const ix of transaction.instructions) {
-        if (ix.programId.equals(SystemProgram.programId)) {
-          try {
-            // Validate system program transfers
-            const dataView = Buffer.from(ix.data);
-            if (dataView.length >= 12) { // Ensure buffer has enough bytes
-              // Check instruction type (0 = Create, 2 = Transfer)
-              const instructionType = dataView.readUInt32LE(0);
-              
-              if (instructionType === 2) { // Transfer instruction
-                const transferAmount = dataView.readBigUInt64LE(4);
-                console.log("Validating system transfer amount:", transferAmount.toString());
-                
-                // Check for unusually large transfers (potential drain attempt)
-                // Example threshold: 1 SOL
-                if (transferAmount > BigInt(1_000_000_000)) {
-                  return {
-                    isMalicious: true,
-                    reason: `Unusually large transfer detected: ${transferAmount.toString()} lamports`
-                  };
-                }
-              }
-            }
-          } catch (error) {
-            console.error("Error validating system instruction:", error);
-            // Continue with other checks
-          }
-        }
-      }
-
-      // All checks passed
-      return { isMalicious: false };
-    } catch (error) {
-      console.error("Error in malicious pattern detection:", error);
-      // Default to non-malicious if detection process fails
-      return { isMalicious: false };
     }
   }
 }
