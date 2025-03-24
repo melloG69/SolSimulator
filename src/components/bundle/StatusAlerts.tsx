@@ -11,11 +11,6 @@ interface StatusAlertsProps {
 export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) => {
   if (simulationStatus === 'idle') return null;
 
-  // Check for malicious transaction types
-  const isHighComputeUnits = details?.error && 
-    typeof details.error === 'string' && 
-    details.error.includes("Excessive compute units");
-  
   // For the simulation success case
   if (simulationStatus === 'success') {
     return (
@@ -29,13 +24,25 @@ export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) =
     );
   }
   
-  // For the simulation failure case 
+  // Check if bundle contains malicious transactions
+  if (details?.hasMaliciousTransactions) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Malicious Transactions Detected</AlertTitle>
+        <AlertDescription>
+          <p>The bundle contains transactions that would be rejected by Lighthouse protection.</p>
+          <p className="mt-2 text-xs">Review the transaction list below to see which transactions are problematic.</p>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  // For other simulation failure cases
   return (
     <Alert variant="destructive">
       <AlertTriangle className="h-4 w-4" />
-      <AlertTitle>
-        {isHighComputeUnits ? "High Compute Units Detected" : "Simulation Detected Issues"}
-      </AlertTitle>
+      <AlertTitle>Simulation Detected Issues</AlertTitle>
       <AlertDescription>
         {details?.error ? (
           <span>{details.error}</span>
