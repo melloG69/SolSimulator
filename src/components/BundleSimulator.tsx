@@ -114,12 +114,12 @@ const BundleSimulator = () => {
           </Alert>
         )}
         
-        {hasHighComputeUnits() && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>High Compute Units Detected</AlertTitle>
-            <AlertDescription>
-              {simulationDetails.error}. This transaction may drain excessive resources.
+        {lighthouseStatus === true && (
+          <Alert className="mb-4 bg-green-950/20 border-green-900">
+            <Shield className="h-4 w-4 text-green-500" />
+            <AlertTitle className="text-green-400">Lighthouse Protection Active</AlertTitle>
+            <AlertDescription className="text-green-300/70">
+              Transactions in this bundle will be protected by Lighthouse assertions.
             </AlertDescription>
           </Alert>
         )}
@@ -130,7 +130,7 @@ const BundleSimulator = () => {
           <AlertDescription>
             <p>Build and simulate transaction bundles with Lighthouse protection. Add transactions to create a bundle, then simulate to analyze their effects and check for malicious activity - all without spending SOL.</p>
             <p className="mt-2 text-xs text-gray-400">
-              Powered by Jito, Helius, and Lighthouse for accurate simulations.
+              Powered by Jito, Helius, and Lighthouse for accurate simulations. Maximum bundle size: 5 transactions.
             </p>
           </AlertDescription>
         </Alert>
@@ -150,6 +150,20 @@ const BundleSimulator = () => {
 
           <div className="bg-black/50 p-4 rounded-md">
             <h2 className="text-secondary font-mono mb-2">Transaction Bundle</h2>
+            {transactions.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <p>No transactions added yet. Use the buttons below to create a bundle.</p>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-400">Bundle Size: {transactions.length}/5</span>
+                {transactions.length === 5 && (
+                  <Badge variant="outline" className="bg-amber-900/20 text-amber-400 border-amber-800">
+                    Maximum Size
+                  </Badge>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <TransactionList 
                 transactions={transactions}
@@ -158,7 +172,7 @@ const BundleSimulator = () => {
               <TransactionControls
                 onAddTransaction={handleAddTransaction}
                 onAddMaliciousTransaction={handleAddMaliciousTransaction}
-                disabled={loading || !connected}
+                disabled={loading || !connected || transactions.length >= 5}
               />
             </div>
           </div>
@@ -181,7 +195,18 @@ const BundleSimulator = () => {
                   </div>
                   <div>
                     <h3 className="text-xs text-white/50 mb-1">Protection Level</h3>
-                    <p className="font-mono">{lighthouseStatus ? 'Lighthouse Enhanced' : 'Basic'}</p>
+                    <p className="font-mono flex items-center">
+                      {lighthouseStatus ? (
+                        <>
+                          <Badge className="mr-2 bg-green-900/20 text-green-400 border-green-800">
+                            Protected
+                          </Badge>
+                          <span>Lighthouse Enhanced</span>
+                        </>
+                      ) : (
+                        'Basic'
+                      )}
+                    </p>
                   </div>
                   <div>
                     <h3 className="text-xs text-white/50 mb-1">Estimated Fees</h3>

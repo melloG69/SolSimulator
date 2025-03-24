@@ -126,7 +126,7 @@ class LighthouseService {
     return transaction.instructions.some(ix => this.isComputeBudgetInstruction(ix));
   }
 
-  private async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
+  public async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
     try {
       if (!transaction || !transaction.instructions) {
         console.warn("Cannot detect malicious patterns: Transaction or instructions are undefined");
@@ -392,7 +392,7 @@ class LighthouseService {
         console.warn("Transaction failed validation, but continuing for demo purposes");
       }
 
-      // Check for malicious patterns in the transaction
+      // Check for malicious patterns in the transaction - already exposed as public method
       if (transaction.instructions && transaction.instructions.length > 0) {
         const maliciousCheck = await this.detectMaliciousPatterns(transaction);
         if (maliciousCheck.isMalicious) {
