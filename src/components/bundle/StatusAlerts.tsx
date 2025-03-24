@@ -55,7 +55,7 @@ export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) =
         <AlertTitle className="flex items-center">
           Bundle Size Exceeds Jito Limit
           <Badge variant="outline" className="ml-2 bg-red-900/20 text-red-400 border-red-800">
-            {details.bundleSize} > 5
+            {details.bundleSize} / 5
           </Badge>
         </AlertTitle>
         <AlertDescription>
