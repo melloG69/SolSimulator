@@ -120,19 +120,26 @@ class LighthouseService {
   }
 
   private hasComputeBudgetInstruction(transaction: Transaction): boolean {
+    if (!transaction || !transaction.instructions) {
+      return false;
+    }
     return transaction.instructions.some(ix => this.isComputeBudgetInstruction(ix));
   }
 
   private async detectMaliciousPatterns(transaction: Transaction): Promise<{ isMalicious: boolean; reason?: string }> {
     try {
+      if (!transaction || !transaction.instructions) {
+        console.warn("Cannot detect malicious patterns: Transaction or instructions are undefined");
+        return { isMalicious: false };
+      }
+
       // Check for excessive compute units
       if (this.hasComputeBudgetInstruction(transaction)) {
         for (const ix of transaction.instructions) {
           if (this.isComputeBudgetInstruction(ix)) {
             try {
               const dataView = Buffer.from(ix.data);
-              // Check if dataView is long enough before reading
-              if (dataView.length >= 5) { // Validate buffer length
+              if (dataView.length >= 5) {
                 const units = dataView.readUInt32LE(1);
                 console.log(`Compute units detected: ${units}`);
                 if (units > this.MAX_COMPUTE_UNITS) {
@@ -144,7 +151,6 @@ class LighthouseService {
               }
             } catch (error) {
               console.error("Error parsing compute budget instruction:", error);
-              // Continue checking other instructions rather than failing immediately
             }
           }
         }
@@ -162,18 +168,14 @@ class LighthouseService {
       for (const ix of transaction.instructions) {
         if (ix.programId.equals(SystemProgram.programId)) {
           try {
-            // Validate system program transfers
             const dataView = Buffer.from(ix.data);
-            if (dataView.length >= 12) { // Ensure buffer has enough bytes
-              // Check instruction type (0 = Create, 2 = Transfer)
+            if (dataView.length >= 12) {
               const instructionType = dataView.readUInt32LE(0);
               
-              if (instructionType === 2) { // Transfer instruction
+              if (instructionType === 2) {
                 const transferAmount = dataView.readBigUInt64LE(4);
                 console.log("Validating system transfer amount:", transferAmount.toString());
                 
-                // Check for unusually large transfers (potential drain attempt)
-                // Example threshold: 1 SOL
                 if (transferAmount > BigInt(1_000_000_000)) {
                   return {
                     isMalicious: true,
@@ -184,7 +186,6 @@ class LighthouseService {
             }
           } catch (error) {
             console.error("Error validating system instruction:", error);
-            // Continue with other checks
           }
         }
       }
@@ -193,7 +194,6 @@ class LighthouseService {
       return { isMalicious: false };
     } catch (error) {
       console.error("Error in malicious pattern detection:", error);
-      // Default to non-malicious if detection process fails
       return { isMalicious: false };
     }
   }
@@ -376,27 +376,8 @@ class LighthouseService {
       // First, check if Lighthouse program is available
       const isProgramAvailable = await this.verifyProgramAccount();
       
-      if (!isProgramAvailable) {
-        // Program not found but we have allowRunningWithoutLighthouse enabled
-        if (LIGHTHOUSE_CONFIG.allowRunningWithoutLighthouse) {
-          console.log("Lighthouse program not found on mainnet - continuing without assertions");
-          return {
-            success: true, // Allow continuing without assertions
-            failureReason: "Lighthouse program not available on mainnet, continuing without protection",
-            isProgramAvailable: false
-          };
-        } else {
-          // Program not found and we require it
-          return {
-            success: false,
-            failureReason: "Lighthouse program not available on mainnet and protection is required",
-            isProgramAvailable: false
-          };
-        }
-      }
-      
       // Special handling for availability check transactions or empty transactions
-      const isValidationOnly = this.isValidationOnlyTransaction(transaction);
+      const isValidationOnly = !transaction.instructions ? true : this.isValidationOnlyTransaction(transaction);
       if (isValidationOnly) {
         console.log("Validation-only transaction detected - skipping assertion creation");
         return {
@@ -412,14 +393,16 @@ class LighthouseService {
       }
 
       // Check for malicious patterns in the transaction
-      const maliciousCheck = await this.detectMaliciousPatterns(transaction);
-      if (maliciousCheck.isMalicious) {
-        console.error("Malicious transaction detected:", maliciousCheck.reason);
-        return {
-          success: false,
-          failureReason: maliciousCheck.reason,
-          isProgramAvailable: true
-        };
+      if (transaction.instructions && transaction.instructions.length > 0) {
+        const maliciousCheck = await this.detectMaliciousPatterns(transaction);
+        if (maliciousCheck.isMalicious) {
+          console.error("Malicious transaction detected:", maliciousCheck.reason);
+          return {
+            success: false,
+            failureReason: maliciousCheck.reason,
+            isProgramAvailable: true
+          };
+        }
       }
 
       // Create assertion transaction

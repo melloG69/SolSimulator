@@ -12,10 +12,26 @@ export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) =
   if (simulationStatus === 'idle') return null;
 
   // Check for malicious transaction types
-  const isHighComputeUnits = details?.error && details.error.includes("Excessive compute units");
+  const isHighComputeUnits = details?.error && 
+    typeof details.error === 'string' && 
+    details.error.includes("Excessive compute units");
   
-  return simulationStatus === 'failed' ? (
-    <Alert variant={isHighComputeUnits ? "destructive" : "destructive"}>
+  // For the simulation success case
+  if (simulationStatus === 'success') {
+    return (
+      <Alert>
+        <Shield className="h-4 w-4" />
+        <AlertTitle>Simulation Successful</AlertTitle>
+        <AlertDescription>
+          All transactions in the bundle would execute successfully. {details?.withProtection ? "Lighthouse protection is active." : ""}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  // For the simulation failure case 
+  return (
+    <Alert variant="destructive">
       <AlertTriangle className="h-4 w-4" />
       <AlertTitle>
         {isHighComputeUnits ? "High Compute Units Detected" : "Simulation Detected Issues"}
@@ -26,14 +42,6 @@ export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) =
         ) : (
           <span>The bundle simulation detected potentially harmful transactions. Please review the transaction details below.</span>
         )}
-      </AlertDescription>
-    </Alert>
-  ) : (
-    <Alert>
-      <Shield className="h-4 w-4" />
-      <AlertTitle>Simulation Successful</AlertTitle>
-      <AlertDescription>
-        All transactions in the bundle would execute successfully. {details?.withProtection ? "Lighthouse protection is active." : ""}
       </AlertDescription>
     </Alert>
   );

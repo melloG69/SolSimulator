@@ -163,9 +163,10 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       );
       
       // Add a reasonable compute budget to ensure transaction passes validation
+      // IMPORTANT: Using 200_000 units which is well below the 1_200_000 threshold
       newTransaction.add(
         ComputeBudgetProgram.setComputeUnitLimit({
-          units: 200_000, // Reasonable compute units
+          units: 200_000, // Safe compute units level (significantly below 1_200_000)
         })
       );
       
@@ -176,7 +177,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
         description: "New transaction has been added to the bundle",
       });
 
-      console.log("Created valid transaction with reasonable compute units");
+      console.log("Created valid transaction with reasonable compute units:", 200_000);
       return newTransaction;
     } catch (error) {
       console.error("Error adding transaction:", error);

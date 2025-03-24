@@ -1,4 +1,3 @@
-
 import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
@@ -37,7 +36,7 @@ export const useSimulationManager = () => {
         // If Lighthouse detects a malicious transaction, return it with a special flag
         if (assertionResult.failureReason && assertionResult.failureReason.includes("Excessive compute units")) {
           console.error("Malicious transaction detected by Lighthouse:", assertionResult.failureReason);
-          // Return with malicious flag to be handled by simulateBundle
+          // Explicitly flag this as a malicious transaction with the exact reason
           return [tx, null, assertionResult.failureReason];
         }
         
@@ -217,10 +216,26 @@ export const useSimulationManager = () => {
         normalErrors: simulationResult.normalErrors || false,
       };
       
-      // Fix: Consider all demo transactions valid to avoid frustrating users
-      // This is just for demonstration purposes in a simulation environment
-      if (!simulationResult.isValid && !simulationResult.normalErrors) {
-        // This is actual malicious activity - show the error
+      // If simulation was successful, show success message
+      if (simulationResult.isValid || simulationResult.normalErrors) {
+        setSimulationStatus('success');
+        
+        await updateBundleStatus(bundleId, 'simulated', { 
+          success: true,
+          details: simulationDetails
+        });
+        
+        toast({
+          title: "Simulation Successful",
+          description: "Bundle has been successfully simulated",
+        });
+
+        return {
+          results: transactions.map(() => ({ success: true, bundleId })),
+          details: simulationDetails
+        };
+      } else {
+        // This is actual malicious activity or other issues - show the error
         console.error('Simulation detected issues:', simulationResult.error);
         setSimulationStatus('failed');
         
@@ -242,25 +257,6 @@ export const useSimulationManager = () => {
             message: simulationResult.error || "Simulation failed", 
             bundleId 
           })),
-          details: simulationDetails
-        };
-      } else {
-        // Mark simulation as successful, even if it has "normal errors"
-        // For demonstration purposes, we want to avoid confusing users
-        setSimulationStatus('success');
-        
-        await updateBundleStatus(bundleId, 'simulated', { 
-          success: true,
-          details: simulationDetails
-        });
-        
-        toast({
-          title: "Simulation Successful",
-          description: "Bundle has been successfully simulated",
-        });
-
-        return {
-          results: transactions.map(() => ({ success: true, bundleId })),
           details: simulationDetails
         };
       }
