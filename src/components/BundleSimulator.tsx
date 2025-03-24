@@ -11,7 +11,7 @@ import { TransactionControls } from "./bundle/TransactionControls";
 import { SimulationActions } from "./bundle/SimulationActions";
 import { lighthouseService } from "@/services/lighthouseService";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, AlertTriangle, Info, Lightbulb } from "lucide-react";
+import { Terminal, AlertTriangle, Info, Lightbulb, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const BundleSimulator = () => {
@@ -50,15 +50,23 @@ const BundleSimulator = () => {
     const newTransaction = await addTransaction();
     if (newTransaction) {
       setTransactions(prev => [...prev, newTransaction]);
+      // Clear previous simulation results when adding new transactions
+      setSimulationResults([]);
+      setSimulationStatus('idle');
+      setSimulationDetails(null);
     }
-  }, [addTransaction, setTransactions]);
+  }, [addTransaction, setTransactions, setSimulationResults, setSimulationStatus]);
 
   const handleAddMaliciousTransaction = useCallback(async () => {
     const newTransaction = await addMaliciousTransaction();
     if (newTransaction) {
       setTransactions(prev => [...prev, newTransaction]);
+      // Clear previous simulation results when adding new transactions
+      setSimulationResults([]);
+      setSimulationStatus('idle');
+      setSimulationDetails(null);
     }
-  }, [addMaliciousTransaction, setTransactions]);
+  }, [addMaliciousTransaction, setTransactions, setSimulationResults, setSimulationStatus]);
 
   const handleSimulate = useCallback(async () => {
     if (!publicKey) return;
@@ -75,6 +83,12 @@ const BundleSimulator = () => {
       setSimulationDetails(details);
     }
   }, [transactions, publicKey, setLoading, setSimulationStatus, simulateBundle, setSimulationResults]);
+
+  // Helper to determine if high compute units were detected
+  const hasHighComputeUnits = useCallback(() => {
+    if (!simulationDetails || !simulationDetails.error) return false;
+    return simulationDetails.error.includes("Excessive compute units");
+  }, [simulationDetails]);
 
   return (
     <div className="container mx-auto p-4">
@@ -96,6 +110,16 @@ const BundleSimulator = () => {
             <AlertTitle>Limited Protection</AlertTitle>
             <AlertDescription>
               Lighthouse program is not available on this network. Simulation security will be limited.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {hasHighComputeUnits() && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>High Compute Units Detected</AlertTitle>
+            <AlertDescription>
+              {simulationDetails.error}. This transaction may drain excessive resources.
             </AlertDescription>
           </Alert>
         )}

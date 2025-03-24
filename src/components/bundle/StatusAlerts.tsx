@@ -11,10 +11,15 @@ interface StatusAlertsProps {
 export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) => {
   if (simulationStatus === 'idle') return null;
 
+  // Check for malicious transaction types
+  const isHighComputeUnits = details?.error && details.error.includes("Excessive compute units");
+  
   return simulationStatus === 'failed' ? (
-    <Alert variant="destructive">
+    <Alert variant={isHighComputeUnits ? "destructive" : "destructive"}>
       <AlertTriangle className="h-4 w-4" />
-      <AlertTitle>Simulation Detected Issues</AlertTitle>
+      <AlertTitle>
+        {isHighComputeUnits ? "High Compute Units Detected" : "Simulation Detected Issues"}
+      </AlertTitle>
       <AlertDescription>
         {details?.error ? (
           <span>{details.error}</span>

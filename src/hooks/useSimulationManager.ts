@@ -34,6 +34,13 @@ export const useSimulationManager = () => {
         // Build assertions for the transaction only if transaction is valid
         const assertionResult = await lighthouseService.buildAssertions(tx);
         
+        // If Lighthouse detects a malicious transaction, return it with a special flag
+        if (assertionResult.failureReason && assertionResult.failureReason.includes("Excessive compute units")) {
+          console.error("Malicious transaction detected by Lighthouse:", assertionResult.failureReason);
+          // Return with malicious flag to be handled by simulateBundle
+          return [tx, null, assertionResult.failureReason];
+        }
+        
         // Check if Lighthouse program is available
         if (!assertionResult.isProgramAvailable) {
           console.log("Lighthouse program not found - continuing without assertions");
@@ -135,7 +142,61 @@ export const useSimulationManager = () => {
 
       // Synchronize transactions with latest blockhash
       const synchronizedTransactionGroups = await synchronizeTransactions(transactions);
-      const flattenedTransactions = synchronizedTransactionGroups.flat();
+      
+      // Check if any transactions were flagged as malicious by Lighthouse
+      const maliciousFlags = synchronizedTransactionGroups.map(group => {
+        // If the third element is a string, it's a malicious flag
+        return group.length > 2 && typeof group[2] === 'string' ? group[2] : null;
+      });
+      
+      const hasMaliciousTransactions = maliciousFlags.some(flag => flag !== null);
+      
+      if (hasMaliciousTransactions) {
+        console.error('Malicious transactions detected in bundle:', 
+          maliciousFlags.filter(flag => flag !== null));
+        
+        setSimulationStatus('failed');
+        
+        // Get the first malicious reason to display
+        const maliciousReason = maliciousFlags.find(flag => flag !== null) || 
+                               "Malicious transaction detected";
+        
+        await updateBundleStatus(bundleId, 'failed', { 
+          error: maliciousReason, 
+          details: { maliciousTransaction: true },
+          normalErrors: false
+        });
+        
+        toast({
+          title: "Simulation Failed",
+          description: "Malicious transaction detected: " + maliciousReason,
+          variant: "destructive",
+        });
+        
+        // Return failed results for all transactions
+        return {
+          results: transactions.map((_, index) => ({ 
+            success: false, 
+            message: maliciousFlags[index] || maliciousReason, 
+            bundleId 
+          })),
+          details: {
+            bundleId,
+            bundleSize: transactions.length,
+            withProtection: true,
+            computeUnits: calculateComputeUnits(transactions),
+            estimatedFees: estimateTransactionFees(transactions).toFixed(6),
+            timestamp: new Date().toISOString(),
+            error: maliciousReason,
+            normalErrors: false,
+          }
+        };
+      }
+      
+      // Remove malicious flags if any and flatten transactions for simulation
+      const flattenedTransactions = synchronizedTransactionGroups
+        .map(group => group.filter((tx): tx is Transaction => tx !== null))
+        .flat();
       
       console.log('Simulating full bundle...');
       const simulationResult = await jitoService.simulateTransactions(flattenedTransactions, {skipSanityChecks: true});
