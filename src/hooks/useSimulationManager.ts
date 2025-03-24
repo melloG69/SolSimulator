@@ -1,3 +1,4 @@
+
 import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
@@ -164,6 +165,51 @@ export const useSimulationManager = () => {
       await createBundle(bundleId, publicKey);
       console.log('Bundle created with ID:', bundleId);
 
+      // Check if bundle has too many transactions
+      const MAX_JITO_TRANSACTIONS = 5;
+      if (transactions.length > MAX_JITO_TRANSACTIONS) {
+        console.error(`Bundle exceeds maximum transaction count (${MAX_JITO_TRANSACTIONS})`);
+        setSimulationStatus('failed');
+        
+        // Calculate details for logging/UI
+        const computeUnits = calculateComputeUnits(transactions);
+        const estimatedFees = estimateTransactionFees(transactions);
+        
+        const simulationDetails = {
+          bundleId,
+          bundleSize: transactions.length,
+          withProtection: false,
+          computeUnits,
+          estimatedFees: estimatedFees.toFixed(6),
+          timestamp: new Date().toISOString(),
+          hasMaliciousTransactions: false,
+          transactionErrors: {}
+        };
+        
+        await updateBundleStatus(bundleId, 'failed', { 
+          error: `Bundle exceeds maximum transaction count (${MAX_JITO_TRANSACTIONS})`,
+          details: simulationDetails
+        });
+        
+        toast({
+          title: "Simulation Failed",
+          description: `Jito bundles are limited to ${MAX_JITO_TRANSACTIONS} transactions. Your bundle has ${transactions.length}.`,
+          variant: "destructive",
+        });
+        
+        return {
+          results: transactions.map(() => ({ 
+            success: false, 
+            message: `Bundle exceeds maximum size of ${MAX_JITO_TRANSACTIONS} transactions`, 
+            bundleId 
+          })),
+          details: {
+            ...simulationDetails,
+            error: `Bundle exceeds maximum transaction count (${MAX_JITO_TRANSACTIONS})`
+          }
+        };
+      }
+
       // Synchronize transactions with latest blockhash and check for malicious ones
       const synchronizedResults = await synchronizeTransactions(transactions);
       
@@ -271,9 +317,12 @@ export const useSimulationManager = () => {
       console.log('Simulating full bundle with valid transactions:', flattenedTransactions.length);
       const simulationResult = await jitoService.simulateTransactions(flattenedTransactions, {skipSanityChecks: true});
       
-      // Update details with simulation results
-      simulationDetails.error = simulationResult.error || null;
-      simulationDetails.normalErrors = simulationResult.normalErrors || false;
+      // Add simulation result error details to the simulation details
+      const updatedSimulationDetails = {
+        ...simulationDetails,
+        error: simulationResult.error || null,
+        normalErrors: simulationResult.normalErrors || false
+      };
       
       // If simulation was successful, show success message
       if (simulationResult.isValid || simulationResult.normalErrors) {
@@ -281,7 +330,7 @@ export const useSimulationManager = () => {
         
         await updateBundleStatus(bundleId, 'simulated', { 
           success: true,
-          details: simulationDetails
+          details: updatedSimulationDetails
         });
         
         toast({
@@ -291,7 +340,7 @@ export const useSimulationManager = () => {
 
         return {
           results: simulationResults,
-          details: simulationDetails
+          details: updatedSimulationDetails
         };
       } else {
         // This is actual malicious activity or other issues - show the error
@@ -318,7 +367,7 @@ export const useSimulationManager = () => {
         
         return {
           results: simulationResults,
-          details: simulationDetails
+          details: updatedSimulationDetails
         };
       }
     } catch (error) {

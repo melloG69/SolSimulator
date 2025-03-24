@@ -18,6 +18,12 @@ export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) =
     return details.error.includes("Excessive compute units");
   };
 
+  // Check if bundle exceeds maximum transaction count
+  const hasExceededMaxTransactions = () => {
+    if (!details) return false;
+    return details.bundleSize > 5;
+  };
+
   // For the simulation success case
   if (simulationStatus === 'success') {
     return (
@@ -36,6 +42,25 @@ export const StatusAlerts = ({ simulationStatus, details }: StatusAlertsProps) =
               </div>
             )}
           </div>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  // Check if bundle has too many transactions
+  if (hasExceededMaxTransactions()) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle className="flex items-center">
+          Bundle Size Exceeds Jito Limit
+          <Badge variant="outline" className="ml-2 bg-red-900/20 text-red-400 border-red-800">
+            {details.bundleSize} > 5
+          </Badge>
+        </AlertTitle>
+        <AlertDescription>
+          <p>Jito bundles can contain a maximum of 5 transactions. Your bundle contains {details.bundleSize} transactions.</p>
+          <p className="mt-2 text-xs">Please remove some transactions to bring the bundle size to 5 or fewer transactions.</p>
         </AlertDescription>
       </Alert>
     );

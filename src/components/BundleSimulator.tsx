@@ -156,10 +156,10 @@ const BundleSimulator = () => {
               </div>
             ) : (
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-400">Bundle Size: {transactions.length}/5</span>
-                {transactions.length === 5 && (
+                <span className="text-xs text-gray-400">Bundle Size: {transactions.length}</span>
+                {transactions.length > 5 && (
                   <Badge variant="outline" className="bg-amber-900/20 text-amber-400 border-amber-800">
-                    Maximum Size
+                    Bundle exceeds Jito limit of 5
                   </Badge>
                 )}
               </div>
@@ -172,7 +172,7 @@ const BundleSimulator = () => {
               <TransactionControls
                 onAddTransaction={handleAddTransaction}
                 onAddMaliciousTransaction={handleAddMaliciousTransaction}
-                disabled={loading || !connected || transactions.length >= 5}
+                disabled={loading || !connected}
               />
             </div>
           </div>
