@@ -2,7 +2,7 @@
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter, BackpackWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { PhantomWalletAdapter, SolflareWalletAdapter, BraveWalletAdapter, CoinbaseWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { connection } from '@/lib/solana';
 import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
@@ -24,11 +24,12 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     network: string;
   }>({ solana: false, lighthouse: false, network: 'mainnet' });
   
-  // Create a properly configured wallet adapters
+  // Create properly configured wallet adapters
   const wallets = [
     new PhantomWalletAdapter(),
     new SolflareWalletAdapter(),
-    new BackpackWalletAdapter(),
+    new BraveWalletAdapter(),
+    new CoinbaseWalletAdapter()
   ];
 
   useEffect(() => {
