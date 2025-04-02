@@ -96,7 +96,7 @@ const BundleSimulator = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-mono text-primary">Solana Bundle Simulator</h1>
+              <h1 className="text-2xl font-mono text-primary">Solana Transaction Simulator</h1>
               <Badge variant="outline" className="font-mono">BETA</Badge>
             </div>
             <p className="text-sm text-muted-foreground mt-1">Test transaction bundles with Lighthouse protection</p>
