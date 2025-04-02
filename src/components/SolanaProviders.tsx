@@ -1,8 +1,7 @@
-
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter, SolflareWalletAdapter, BraveWalletAdapter, CoinbaseWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { connection } from '@/lib/solana';
 import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
@@ -24,12 +23,9 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     network: string;
   }>({ solana: false, lighthouse: false, network: 'mainnet' });
   
-  // Create properly configured wallet adapters
+  // Create wallet adapter with only Phantom
   const wallets = [
-    new PhantomWalletAdapter(),
-    new SolflareWalletAdapter(),
-    new BraveWalletAdapter(),
-    new CoinbaseWalletAdapter()
+    new PhantomWalletAdapter()
   ];
 
   useEffect(() => {
