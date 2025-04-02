@@ -2,12 +2,15 @@
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import { PhantomWalletAdapter, BackpackWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { connection } from '@/lib/solana';
 import { SolanaErrorBoundary } from './SolanaErrorBoundary';
 import { toast } from "sonner";
 import { lighthouseService } from "@/services/lighthouseService";
 import { Transaction, PublicKey, SystemProgram } from '@solana/web3.js';
+
+// Import wallet adapter CSS
+import '@solana/wallet-adapter-react-ui/styles.css';
 
 interface SolanaProvidersProps {
   children: ReactNode;
@@ -21,16 +24,25 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
     network: string;
   }>({ solana: false, lighthouse: false, network: 'mainnet' });
   
-  // Create a properly configured wallet adapter for Phantom
+  // Create a properly configured wallet adapters
   const wallets = [
-    new PhantomWalletAdapter({ network: 'mainnet-beta' }) 
+    new PhantomWalletAdapter(),
+    new SolflareWalletAdapter(),
+    new BackpackWalletAdapter(),
   ];
 
   useEffect(() => {
     const checkDependencies = async () => {
       try {
-        if (typeof window === 'undefined' || !window.Buffer || !window.process) {
-          throw new Error('Required browser dependencies not found');
+        if (typeof window === 'undefined') {
+          console.warn('Running in server environment, skipping dependency check');
+          return;
+        }
+
+        // Check for required polyfills
+        if (!window.Buffer) {
+          console.warn('Buffer not found in window object');
+          // We'll continue since polyfills might be loaded asynchronously
         }
 
         const timeoutPromise = new Promise((_, reject) => {
