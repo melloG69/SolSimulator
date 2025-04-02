@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -50,7 +49,6 @@ const BundleSimulator = () => {
     const newTransaction = await addTransaction();
     if (newTransaction) {
       setTransactions(prev => [...prev, newTransaction]);
-      // Clear previous simulation results when adding new transactions
       setSimulationResults([]);
       setSimulationStatus('idle');
       setSimulationDetails(null);
@@ -61,7 +59,6 @@ const BundleSimulator = () => {
     const newTransaction = await addMaliciousTransaction();
     if (newTransaction) {
       setTransactions(prev => [...prev, newTransaction]);
-      // Clear previous simulation results when adding new transactions
       setSimulationResults([]);
       setSimulationStatus('idle');
       setSimulationDetails(null);
@@ -84,7 +81,6 @@ const BundleSimulator = () => {
     }
   }, [transactions, publicKey, setLoading, setSimulationStatus, simulateBundle, setSimulationResults]);
 
-  // Helper to determine if high compute units were detected
   const hasHighComputeUnits = useCallback(() => {
     if (!simulationDetails || !simulationDetails.error) return false;
     return simulationDetails.error.includes("Excessive compute units");
@@ -126,7 +122,7 @@ const BundleSimulator = () => {
         
         <Alert className="mb-4 bg-gray-800">
           <Lightbulb className="h-4 w-4" />
-          <AlertTitle>About Bundle Simulation</AlertTitle>
+          <AlertTitle>About Transaction Simulation</AlertTitle>
           <AlertDescription>
             <p>Build and simulate transaction bundles with Lighthouse protection. Add transactions to create a bundle, then simulate to analyze their effects and check for malicious activity - all without spending SOL.</p>
             <p className="mt-2 text-xs text-gray-400">
