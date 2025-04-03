@@ -153,11 +153,11 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       const minimumAmount = await getMinimumTransferAmount();
       const newTransaction = new Transaction();
       
-      // Add a minimal SOL transfer to a known recipient
+      // Add a minimal SOL transfer to self (the user's own wallet)
       newTransaction.add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
-          toPubkey: DEFAULT_RECIPIENT, // Use a valid recipient that exists
+          toPubkey: publicKey, // Send to self instead of DEFAULT_RECIPIENT
           lamports: minimumAmount,
         })
       );
@@ -174,10 +174,10 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       
       toast({
         title: "Transaction Added",
-        description: "New transaction has been added to the bundle",
+        description: "Self-transfer transaction has been added to the bundle",
       });
 
-      console.log("Created valid transaction with reasonable compute units:", 200_000);
+      console.log("Created valid self-transfer transaction with reasonable compute units:", 200_000);
       return newTransaction;
     } catch (error) {
       console.error("Error adding transaction:", error);
