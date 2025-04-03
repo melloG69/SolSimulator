@@ -33,6 +33,12 @@ export const useBundleState = () => {
     }
   }, [connecting]);
 
+  // Helper function to check if the bundle is executable
+  const isBundleExecutable = (results: SimulationResult[]): boolean => {
+    if (results.length === 0) return false;
+    return results.every(result => result.success);
+  };
+
   return {
     transactions,
     setTransactions,
@@ -41,6 +47,7 @@ export const useBundleState = () => {
     loading,
     setLoading,
     simulationStatus,
-    setSimulationStatus
+    setSimulationStatus,
+    isBundleExecutable
   };
 };

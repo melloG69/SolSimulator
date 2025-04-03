@@ -11,7 +11,7 @@ import { TransactionControls } from "./bundle/TransactionControls";
 import { SimulationActions } from "./bundle/SimulationActions";
 import { lighthouseService } from "@/services/lighthouseService";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, AlertTriangle, Info, Lightbulb, Shield } from "lucide-react";
+import { Terminal, AlertTriangle, Info, Lightbulb, Shield, CheckCircle, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const BundleSimulator = () => {
@@ -31,6 +31,7 @@ const BundleSimulator = () => {
   const { simulateBundle } = useSimulationManager();
   const [lighthouseStatus, setLighthouseStatus] = useState<boolean | null>(null);
   const [simulationDetails, setSimulationDetails] = useState<any>(null);
+  const [isExecutable, setIsExecutable] = useState<boolean | null>(null);
 
   useEffect(() => {
     const checkLighthouse = async () => {
@@ -46,6 +47,21 @@ const BundleSimulator = () => {
     checkLighthouse();
   }, []);
 
+  // Reset executable status when transactions change
+  useEffect(() => {
+    setIsExecutable(null);
+  }, [transactions]);
+
+  // Determine if bundle is executable based on simulation results
+  useEffect(() => {
+    if (simulationStatus === 'success' || simulationStatus === 'failed') {
+      // Bundle is executable if all transactions succeeded
+      const canExecute = simulationResults.length > 0 && 
+        simulationResults.every(result => result.success);
+      setIsExecutable(canExecute);
+    }
+  }, [simulationResults, simulationStatus]);
+
   const handleAddTransaction = useCallback(async () => {
     const newTransaction = await addTransaction();
     if (newTransaction) {
@@ -53,6 +69,7 @@ const BundleSimulator = () => {
       setSimulationResults([]);
       setSimulationStatus('idle');
       setSimulationDetails(null);
+      setIsExecutable(null);
     }
   }, [addTransaction, setTransactions, setSimulationResults, setSimulationStatus]);
 
@@ -63,6 +80,7 @@ const BundleSimulator = () => {
       setSimulationResults([]);
       setSimulationStatus('idle');
       setSimulationDetails(null);
+      setIsExecutable(null);
     }
   }, [addMaliciousTransaction, setTransactions, setSimulationResults, setSimulationStatus]);
 
@@ -145,6 +163,27 @@ const BundleSimulator = () => {
             details={simulationDetails}
           />
 
+          {isExecutable !== null && simulationStatus !== 'idle' && (
+            <Alert 
+              variant={isExecutable ? "default" : "destructive"} 
+              className={isExecutable ? "bg-green-950/20 border-green-900" : ""}
+            >
+              {isExecutable ? 
+                <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                <XCircle className="h-4 w-4" />
+              }
+              <AlertTitle className={isExecutable ? "text-green-400" : ""}>
+                {isExecutable ? "Bundle is Executable" : "Bundle is Not Executable"}
+              </AlertTitle>
+              <AlertDescription className={isExecutable ? "text-green-300/70" : ""}>
+                {isExecutable ? 
+                  "All transactions in this bundle have passed simulation and can be executed." : 
+                  "One or more transactions in this bundle have failed simulation and cannot be executed."
+                }
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="bg-black/50 p-4 rounded-md">
             <h2 className="text-secondary font-mono mb-2">Transaction Bundle</h2>
             {transactions.length === 0 ? (
@@ -214,6 +253,20 @@ const BundleSimulator = () => {
                     <h3 className="text-xs text-white/50 mb-1">Compute Units</h3>
                     <p className="font-mono">{simulationDetails.computeUnits || 0} units</p>
                   </div>
+                  <div>
+                    <h3 className="text-xs text-white/50 mb-1">Executable Status</h3>
+                    <p className="font-mono flex items-center">
+                      {isExecutable ? (
+                        <Badge className="bg-green-900/20 text-green-400 border-green-800">
+                          Executable
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive">
+                          Not Executable
+                        </Badge>
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -225,3 +278,4 @@ const BundleSimulator = () => {
 };
 
 export default BundleSimulator;
+
