@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 
 interface TransactionListProps {
   transactions: Transaction[];
-  simulationResults?: Array<{ success: boolean; message?: string; bundleId?: string }>;
+  simulationResults?: Array<{ success: boolean; message?: string }>;
   lighthouseStatus?: boolean;
 }
 
@@ -54,11 +54,6 @@ export const TransactionList = ({
                       </Badge>
                     )}
                   </div>
-                  {result?.bundleId && (
-                    <div className="text-xs text-white/50">
-                      Bundle ID: {result.bundleId}
-                    </div>
-                  )}
                 </div>
                 {result && (
                   result.success 

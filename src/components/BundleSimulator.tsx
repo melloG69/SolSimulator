@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -164,6 +165,7 @@ const BundleSimulator = () => {
               <TransactionList 
                 transactions={transactions}
                 simulationResults={simulationResults}
+                lighthouseStatus={lighthouseStatus}
               />
               <TransactionControls
                 onAddTransaction={handleAddTransaction}

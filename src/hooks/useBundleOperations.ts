@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { connection } from "@/lib/solana";
 import { SimulationResult } from "./useBundleState";
 import { lighthouseService } from "@/services/lighthouseService";
-import { setWalletContext, createBundle, updateBundleStatus } from "@/utils/bundleStorage";
+import { setWalletContext } from "@/utils/bundleStorage";
 
 export const useBundleOperations = () => {
   const { toast } = useToast();
@@ -127,23 +127,14 @@ export const useBundleOperations = () => {
     try {
       console.log('Starting bundle simulation for wallet:', publicKey);
       
-      // Create a unique bundle ID
-      const bundleId = crypto.randomUUID();
-      
-      // Store wallet context and bundle information locally
+      // Store wallet context locally
       await setWalletContext(publicKey);
-      await createBundle(bundleId, publicKey);
-      console.log('Bundle created with ID:', bundleId);
-
+      
       // First, verify accounts exist before any synchronization
       const accountVerification = await verifyAccounts(transactions);
       if (!accountVerification.valid) {
         console.error('Account verification failed:', accountVerification.error);
         setSimulationStatus('failed');
-        
-        await updateBundleStatus(bundleId, 'failed', { 
-          error: accountVerification.error || 'Account verification failed'
-        });
         
         toast({
           title: "Account Error",
@@ -153,8 +144,7 @@ export const useBundleOperations = () => {
         
         return transactions.map(() => ({ 
           success: false, 
-          message: accountVerification.error || "Account verification failed", 
-          bundleId 
+          message: accountVerification.error || "Account verification failed"
         }));
       }
 
@@ -173,12 +163,6 @@ export const useBundleOperations = () => {
           console.warn('Simulation has normal errors:', simulationResult.error);
           setSimulationStatus('failed');
           
-          await updateBundleStatus(bundleId, 'failed', { 
-            error: simulationResult.error || 'Simulation failed with normal errors', 
-            details: simulationResult.details,
-            normalErrors: true
-          });
-          
           toast({
             title: "Simulation Failed",
             description: simulationResult.error || "Transaction errors detected",
@@ -189,12 +173,6 @@ export const useBundleOperations = () => {
           console.error('Simulation detected malicious activity:', simulationResult.error);
           setSimulationStatus('failed');
           
-          await updateBundleStatus(bundleId, 'failed', { 
-            error: simulationResult.error || 'Malicious activity detected', 
-            details: simulationResult.details,
-            normalErrors: false
-          });
-          
           toast({
             title: "Malicious Activity Detected",
             description: simulationResult.error || "Potential malicious activity detected in the bundle",
@@ -204,21 +182,18 @@ export const useBundleOperations = () => {
         
         return transactions.map(() => ({ 
           success: false, 
-          message: simulationResult.error || "Simulation failed", 
-          bundleId 
+          message: simulationResult.error || "Simulation failed"
         }));
       }
 
       setSimulationStatus('success');
-      
-      await updateBundleStatus(bundleId, 'simulated', { success: true });
       
       toast({
         title: "Simulation Complete",
         description: "Bundle has been successfully simulated",
       });
 
-      return transactions.map(() => ({ success: true, bundleId }));
+      return transactions.map(() => ({ success: true }));
     } catch (error) {
       console.error("Simulation error:", error);
       setSimulationStatus('failed');

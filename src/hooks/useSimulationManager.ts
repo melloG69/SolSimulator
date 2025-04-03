@@ -1,11 +1,10 @@
-
 import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
 import { connection } from "@/lib/solana";
 import { SimulationResult } from "./useBundleState";
 import { lighthouseService } from "@/services/lighthouseService";
-import { setWalletContext, createBundle, updateBundleStatus } from "@/utils/bundleStorage";
+import { setWalletContext } from "@/utils/bundleStorage";
 
 export const useSimulationManager = () => {
   const { toast } = useToast();
@@ -157,13 +156,8 @@ export const useSimulationManager = () => {
     try {
       console.log('Starting bundle simulation for wallet:', publicKey);
       
-      // Create a unique bundle ID
-      const bundleId = crypto.randomUUID();
-      
-      // Store wallet context and bundle information locally
+      // Store wallet context
       await setWalletContext(publicKey);
-      await createBundle(bundleId, publicKey);
-      console.log('Bundle created with ID:', bundleId);
 
       // Check if bundle has too many transactions
       const MAX_JITO_TRANSACTIONS = 5;
@@ -176,7 +170,6 @@ export const useSimulationManager = () => {
         const estimatedFees = estimateTransactionFees(transactions);
         
         const simulationDetails = {
-          bundleId,
           bundleSize: transactions.length,
           withProtection: false,
           computeUnits,
@@ -185,11 +178,6 @@ export const useSimulationManager = () => {
           hasMaliciousTransactions: false,
           transactionErrors: {}
         };
-        
-        await updateBundleStatus(bundleId, 'failed', { 
-          error: `Bundle exceeds maximum transaction count (${MAX_JITO_TRANSACTIONS})`,
-          details: simulationDetails
-        });
         
         toast({
           title: "Simulation Failed",
@@ -200,8 +188,7 @@ export const useSimulationManager = () => {
         return {
           results: transactions.map(() => ({ 
             success: false, 
-            message: `Bundle exceeds maximum size of ${MAX_JITO_TRANSACTIONS} transactions`, 
-            bundleId 
+            message: `Bundle exceeds maximum size of ${MAX_JITO_TRANSACTIONS} transactions`
           })),
           details: {
             ...simulationDetails,
@@ -240,15 +227,13 @@ export const useSimulationManager = () => {
         if (maliciousFlags[index]) {
           return { 
             success: false, 
-            message: transactionErrors[index] || "Malicious transaction detected", 
-            bundleId 
+            message: transactionErrors[index] || "Malicious transaction detected"
           };
         }
         
         // Otherwise, consider it valid for individual evaluation
         return { 
-          success: true, 
-          bundleId 
+          success: true
         };
       });
       
@@ -259,7 +244,6 @@ export const useSimulationManager = () => {
         synchronizedResults.filter(r => !r.malicious).length;
       
       const simulationDetails = {
-        bundleId,
         bundleSize: transactions.length,
         withProtection: hasLighthouseProtection,
         computeUnits,
@@ -290,12 +274,6 @@ export const useSimulationManager = () => {
         }
         
         setSimulationStatus('failed');
-        
-        await updateBundleStatus(bundleId, 'failed', { 
-          error: "Bundle contains malicious transactions", 
-          details: simulationDetails,
-          normalErrors: false
-        });
         
         toast({
           title: "Simulation Detected Issues",
@@ -328,11 +306,6 @@ export const useSimulationManager = () => {
       if (simulationResult.isValid || simulationResult.normalErrors) {
         setSimulationStatus('success');
         
-        await updateBundleStatus(bundleId, 'simulated', { 
-          success: true,
-          details: updatedSimulationDetails
-        });
-        
         toast({
           title: "Simulation Successful",
           description: "Bundle has been successfully simulated",
@@ -346,12 +319,6 @@ export const useSimulationManager = () => {
         // This is actual malicious activity or other issues - show the error
         console.error('Simulation detected issues:', simulationResult.error);
         setSimulationStatus('failed');
-        
-        await updateBundleStatus(bundleId, 'failed', { 
-          error: simulationResult.error || 'Simulation detected issues', 
-          details: simulationResult.details,
-          normalErrors: simulationResult.normalErrors || false
-        });
         
         toast({
           title: "Simulation Failed",
