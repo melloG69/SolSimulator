@@ -84,7 +84,7 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
       // Add high compute units instruction (this is what makes it "malicious")
       maliciousTransaction.add(
         ComputeBudgetProgram.setComputeUnitLimit({
-          units: 1_400_000, // Excessively high compute units
+          units: 1_400_000, // Excessively high compute units that will be caught by Lighthouse
         })
       );
       

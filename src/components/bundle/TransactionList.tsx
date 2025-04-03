@@ -1,17 +1,19 @@
 
 import { Transaction } from "@solana/web3.js";
-import { CheckCircle, XCircle, Info, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Info, AlertTriangle, Shield } from "lucide-react";
 import { SimulationResult } from "@/hooks/useBundleState";
 import { Badge } from "@/components/ui/badge";
 
 interface TransactionListProps {
   transactions: Transaction[];
   simulationResults?: Array<{ success: boolean; message?: string; bundleId?: string }>;
+  lighthouseStatus?: boolean;
 }
 
 export const TransactionList = ({ 
   transactions, 
-  simulationResults = []
+  simulationResults = [],
+  lighthouseStatus
 }: TransactionListProps) => {
   return (
     <div className="space-y-2">
@@ -23,6 +25,7 @@ export const TransactionList = ({
         transactions.map((tx, index) => {
           const result = simulationResults[index];
           const isHighComputeError = result?.message && result.message.includes("Excessive compute units");
+          const isLighthouseProtected = lighthouseStatus && !isHighComputeError;
           
           return (
             <div key={index} className="bg-black/30 p-4 rounded-lg space-y-2">
@@ -40,6 +43,14 @@ export const TransactionList = ({
                     {isHighComputeError && (
                       <Badge variant="destructive" className="text-[10px] h-5">
                         High Compute
+                      </Badge>
+                    )}
+                    
+                    {/* Show Lighthouse protection badge */}
+                    {isLighthouseProtected && (
+                      <Badge className="text-[10px] h-5 bg-green-900/20 text-green-400 border-green-800">
+                        <Shield className="h-3 w-3 mr-1" />
+                        Protected
                       </Badge>
                     )}
                   </div>
