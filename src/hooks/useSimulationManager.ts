@@ -1,3 +1,4 @@
+
 import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
@@ -176,12 +177,20 @@ export const useSimulationManager = () => {
           estimatedFees: estimatedFees.toFixed(6),
           timestamp: new Date().toISOString(),
           hasMaliciousTransactions: false,
-          transactionErrors: {}
+          transactionErrors: {},
+          isExecutable: false // Add executable status flag
         };
         
         toast({
           title: "Simulation Failed",
           description: `Jito bundles are limited to ${MAX_JITO_TRANSACTIONS} transactions. Your bundle has ${transactions.length}.`,
+          variant: "destructive",
+        });
+        
+        // Show bundle executable status in a separate toast
+        toast({
+          title: "Bundle is Not Executable",
+          description: "The bundle exceeds maximum size and cannot be executed.",
           variant: "destructive",
         });
         
@@ -242,6 +251,9 @@ export const useSimulationManager = () => {
       const estimatedFees = estimateTransactionFees(transactions);
       const hasLighthouseProtection = flattenedTransactions.length > 
         synchronizedResults.filter(r => !r.malicious).length;
+        
+      // Determine if the bundle is executable
+      let isExecutable = !hasMaliciousTransactions;
       
       const simulationDetails = {
         bundleSize: transactions.length,
@@ -250,7 +262,8 @@ export const useSimulationManager = () => {
         estimatedFees: estimatedFees.toFixed(6),
         timestamp: new Date().toISOString(),
         hasMaliciousTransactions,
-        transactionErrors
+        transactionErrors,
+        isExecutable // Add executable status flag
       };
       
       if (hasMaliciousTransactions) {
@@ -281,6 +294,13 @@ export const useSimulationManager = () => {
           variant: "destructive",
         });
         
+        // Show bundle executable status in a separate toast
+        toast({
+          title: "Bundle is Not Executable",
+          description: "One or more transactions in this bundle have failed simulation.",
+          variant: "destructive", 
+        });
+        
         return {
           results: simulationResults,
           details: {
@@ -295,11 +315,15 @@ export const useSimulationManager = () => {
       console.log('Simulating full bundle with valid transactions:', flattenedTransactions.length);
       const simulationResult = await jitoService.simulateTransactions(flattenedTransactions, {skipSanityChecks: true});
       
+      // Update executable status based on simulation results
+      isExecutable = simulationResult.isValid || simulationResult.normalErrors;
+      
       // Add simulation result error details to the simulation details
       const updatedSimulationDetails = {
         ...simulationDetails,
         error: simulationResult.error || null,
-        normalErrors: simulationResult.normalErrors || false
+        normalErrors: simulationResult.normalErrors || false,
+        isExecutable
       };
       
       // If simulation was successful, show success message
@@ -309,6 +333,12 @@ export const useSimulationManager = () => {
         toast({
           title: "Simulation Successful",
           description: "Bundle has been successfully simulated",
+        });
+        
+        // Show bundle executable status in a separate toast
+        toast({
+          title: "Bundle is Executable",
+          description: "All transactions in this bundle have passed simulation.",
         });
 
         return {
@@ -323,6 +353,13 @@ export const useSimulationManager = () => {
         toast({
           title: "Simulation Failed",
           description: simulationResult.error || "Issues detected in the bundle",
+          variant: "destructive",
+        });
+        
+        // Show bundle executable status in a separate toast
+        toast({
+          title: "Bundle is Not Executable", 
+          description: "The bundle simulation has failed and cannot be executed.",
           variant: "destructive",
         });
         
@@ -345,12 +382,20 @@ export const useSimulationManager = () => {
         description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+      
+      // Show bundle executable status in a separate toast
+      toast({
+        title: "Bundle is Not Executable",
+        description: "An error occurred during simulation.",
+        variant: "destructive",
+      });
+      
       return {
         results: transactions.map(() => ({ 
           success: false, 
           message: error instanceof Error ? error.message : "Unknown error occurred" 
         })),
-        details: null
+        details: { isExecutable: false }
       };
     } finally {
       setLoading(false);

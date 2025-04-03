@@ -16,6 +16,7 @@ export const useBundleState = () => {
   const [simulationResults, setSimulationResults] = useState<SimulationResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState<SimulationStatus>('idle');
+  const [isExecutable, setIsExecutable] = useState<boolean | null>(null);
   const { connected, connecting } = useWallet();
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export const useBundleState = () => {
       setTransactions([]);
       setSimulationResults([]);
       setSimulationStatus('idle');
+      setIsExecutable(null);
       toast.info('Wallet disconnected. Please connect your wallet to continue.');
     }
   }, [connected, connecting]);
@@ -32,6 +34,22 @@ export const useBundleState = () => {
       toast.info('Connecting to wallet...');
     }
   }, [connecting]);
+
+  // Reset executable status when transactions change
+  useEffect(() => {
+    setIsExecutable(null);
+  }, [transactions]);
+
+  // Update executable status whenever simulation results change
+  useEffect(() => {
+    if (simulationStatus === 'success' || simulationStatus === 'failed') {
+      // Bundle is executable if all transactions succeeded
+      const canExecute = simulationResults.length > 0 && 
+        simulationResults.every(result => result.success);
+      console.log('Setting isExecutable to:', canExecute, 'based on results:', simulationResults);
+      setIsExecutable(canExecute);
+    }
+  }, [simulationResults, simulationStatus]);
 
   // Helper function to check if the bundle is executable
   const isBundleExecutable = (results: SimulationResult[]): boolean => {
@@ -48,6 +66,8 @@ export const useBundleState = () => {
     setLoading,
     simulationStatus,
     setSimulationStatus,
+    isExecutable,
+    setIsExecutable,
     isBundleExecutable
   };
 };
