@@ -6,6 +6,8 @@ import "./App.css"
 import { Toaster } from "@/components/ui/toaster"
 import NotFound from "./pages/NotFound"
 import BundleSimulator from "./components/BundleSimulator"
+import Policy from "./pages/Policy"
+import TermsConditions from "./pages/TermsConditions"
 
 function App() {
   return (
@@ -14,6 +16,8 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<BundleSimulator />} />
+            <Route path="/policy" element={<Policy />} />
+            <Route path="/terms" element={<TermsConditions />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
