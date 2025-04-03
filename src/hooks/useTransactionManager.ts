@@ -57,21 +57,12 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     }
 
     try {
-      // Verify the wallet account exists and has sufficient balance
+      // Verify the wallet account exists
       const accountCheck = await verifyAccountExists(publicKey);
       if (!accountCheck.exists) {
         toast({
           title: "Account Error",
           description: "Your wallet account doesn't exist on-chain",
-          variant: "destructive",
-        });
-        return null;
-      }
-
-      if (accountCheck.balance && accountCheck.balance < LAMPORTS_PER_SOL * 0.01) {
-        toast({
-          title: "Insufficient Balance",
-          description: "Your wallet needs at least 0.01 SOL for this operation",
           variant: "destructive",
         });
         return null;
@@ -129,21 +120,12 @@ export const useTransactionManager = (publicKey: PublicKey | null) => {
     }
 
     try {
-      // Verify the wallet account exists and has sufficient balance
+      // Verify the wallet account exists
       const accountCheck = await verifyAccountExists(publicKey);
       if (!accountCheck.exists) {
         toast({
           title: "Account Error",
           description: "Your wallet account doesn't exist on-chain",
-          variant: "destructive",
-        });
-        return null;
-      }
-
-      if (accountCheck.balance && accountCheck.balance < LAMPORTS_PER_SOL * 0.01) {
-        toast({
-          title: "Insufficient Balance",
-          description: "Your wallet needs at least 0.01 SOL for this operation",
           variant: "destructive",
         });
         return null;
