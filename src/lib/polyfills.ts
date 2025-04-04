@@ -1,22 +1,27 @@
 
+/**
+ * Essential polyfills for Solana and Lighthouse compatibility
+ */
 import { Buffer } from 'buffer/';
-import stream from 'stream-browserify';
 import process from 'process';
 import util from 'util';
 import EventEmitter from 'events';
+import stream from 'stream-browserify';
 
-// First, set up Buffer globally with proper type assertion
+// Setup global polyfills with proper type checking
 if (typeof window !== 'undefined') {
+  // Critical polyfills for Solana ecosystem
   (window as any).Buffer = Buffer;
   (window as any).process = process;
   (window as any).global = window;
-}
 
-// Set up stream and related utilities
-if (typeof window !== 'undefined') {
+  // Stream and utility polyfills needed by various dependencies
   (window as any).Stream = stream.Stream;
   (window as any).util = util;
   (window as any).EventEmitter = EventEmitter;
+  
+  console.log('Polyfills initialized successfully');
 }
 
+// Export for direct imports where needed
 export { Buffer };

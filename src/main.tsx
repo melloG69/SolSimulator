@@ -20,6 +20,17 @@ try {
     toast.error("An unexpected error occurred. Please refresh the page.");
   };
 
+  // Add unhandled promise rejection handler
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    toast.error("An operation failed. Please try again.");
+  });
+
+  // Check polyfill initialization
+  if (!window.Buffer) {
+    console.warn("Buffer polyfill not detected - this may cause issues with Solana operations");
+  }
+
   const root = createRoot(rootElement);
   root.render(<App />);
 } catch (error) {
@@ -29,6 +40,7 @@ try {
     <div style="padding: 20px; text-align: center;">
       <h2>Failed to load application</h2>
       <p>Please refresh the page or try again later.</p>
+      <p style="color: #666; font-size: 12px;">Error: ${error instanceof Error ? error.message : 'Unknown error'}</p>
     </div>
   `;
 }
