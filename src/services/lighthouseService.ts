@@ -11,8 +11,8 @@ import { connection } from "@/lib/solana";
  * GitHub: https://github.com/Jac0xb/lighthouse
  */
 class LighthouseService {
-  // Known program ID for Lighthouse on mainnet
-  private programId = new PublicKey('LHgyUPcvj2fjjFWcHuQKhnSS3QYHCJYVRxT7URiBPAJ');
+  // Correct program ID for Lighthouse on mainnet
+  private programId = new PublicKey('LTHGYUPcvj2fjjFWcHuQKhnSS3QYHCJYVRxT7URiBPAJ');
   
   /**
    * Initializes the Lighthouse service and verifies availability

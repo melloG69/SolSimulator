@@ -5,6 +5,7 @@ import { lighthouseService } from '@/services/lighthouseService';
 import { createLighthouseGuardrail, analyzeBundleSecurity } from '@/integrations/lighthouse';
 import { getLighthouseStatus, setLighthouseStatus } from '@/integrations/lighthouse/storage';
 import { connection } from '@/lib/solana';
+import { toast } from 'sonner';
 
 export const useLighthouse = () => {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
@@ -13,22 +14,27 @@ export const useLighthouse = () => {
   // Check if Lighthouse is available on the current network
   useEffect(() => {
     const checkAvailability = async () => {
-      // Try to get cached status first
-      const cachedStatus = getLighthouseStatus();
-      
-      if (cachedStatus) {
-        setIsAvailable(cachedStatus.isAvailable);
+      try {
+        // Try to get cached status first
+        const cachedStatus = getLighthouseStatus();
         
-        // If cache is older than 1 hour, refresh in the background
-        const cacheTime = new Date(cachedStatus.timestamp).getTime();
-        const oneHour = 60 * 60 * 1000;
-        
-        if (Date.now() - cacheTime > oneHour) {
-          refreshAvailability();
+        if (cachedStatus) {
+          setIsAvailable(cachedStatus.isAvailable);
+          
+          // If cache is older than 1 hour, refresh in the background
+          const cacheTime = new Date(cachedStatus.timestamp).getTime();
+          const oneHour = 60 * 60 * 1000;
+          
+          if (Date.now() - cacheTime > oneHour) {
+            refreshAvailability();
+          }
+        } else {
+          // No cached status, check immediately
+          await refreshAvailability();
         }
-      } else {
-        // No cached status, check immediately
-        await refreshAvailability();
+      } catch (error) {
+        console.error("Error in checkAvailability:", error);
+        setIsAvailable(false);
       }
     };
     
@@ -39,13 +45,32 @@ export const useLighthouse = () => {
   const refreshAvailability = async () => {
     try {
       setIsLoading(true);
+      // First try direct initialize method to ensure we've properly checked the program ID
+      const directCheck = await lighthouseService.initialize(connection);
+      
+      if (directCheck) {
+        console.log("Lighthouse program found via direct check");
+        setIsAvailable(true);
+        setLighthouseStatus(true);
+        toast.success("Lighthouse protection active");
+        return;
+      }
+      
+      // Fallback to standard check
       const result = await lighthouseService.checkProgramAvailability();
       setIsAvailable(result.isProgramAvailable);
       setLighthouseStatus(result.isProgramAvailable);
+      
+      if (result.isProgramAvailable) {
+        toast.success("Lighthouse protection active");
+      } else {
+        toast.warning("Lighthouse not available - limited security protections active");
+      }
     } catch (error) {
       console.error("Error checking Lighthouse availability:", error);
       setIsAvailable(false);
       setLighthouseStatus(false);
+      toast.error("Unable to verify Lighthouse availability");
     } finally {
       setIsLoading(false);
     }

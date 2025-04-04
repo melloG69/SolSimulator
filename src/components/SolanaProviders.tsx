@@ -1,3 +1,4 @@
+
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -65,8 +66,19 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
           // Continue initialization despite Solana connection errors
         }
         
-        // Check Lighthouse program availability on mainnet with a proper mock transaction
+        // Check Lighthouse program availability on mainnet 
         try {
+          // First attempt a direct program check
+          const directCheck = await lighthouseService.initialize(connection);
+          
+          if (directCheck) {
+            console.log("Lighthouse program found via direct check");
+            setNetworkStatus(prev => ({ ...prev, lighthouse: true }));
+            toast.success("Lighthouse protection active on mainnet");
+            setIsReady(true);
+            return;
+          }
+          
           // Create a proper mock transaction with a valid instruction for testing
           const mockTx = new Transaction();
           const mockPayer = new PublicKey('11111111111111111111111111111111');
