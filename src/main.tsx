@@ -7,18 +7,33 @@ import App from './App.tsx';
 import './index.css';
 import { toast } from "sonner";
 
+// Add global error handler for debugging
+const handleGlobalError = (error: any) => {
+  console.error("Global error:", error);
+  if (error instanceof Error) {
+    console.error(`${error.name}: ${error.message}`);
+    console.error(error.stack);
+  }
+};
+
+// Set global error handlers
+window.onerror = (message, source, lineno, colno, error) => {
+  handleGlobalError(error || message);
+  toast.error("An unexpected error occurred. Please refresh the page.");
+  return true; // Prevent default error handling
+};
+
+window.addEventListener('unhandledrejection', (event) => {
+  handleGlobalError(event.reason);
+  toast.error("An unexpected promise rejection occurred. Please refresh the page.");
+});
+
 // Wrap root creation in a try-catch for better error reporting
 try {
   const rootElement = document.getElementById("root");
   if (!rootElement) {
     throw new Error("Root element not found");
   }
-  
-  // Add window error handling
-  window.onerror = (message, source, lineno, colno, error) => {
-    console.error("Global error:", { message, source, lineno, colno, error });
-    toast.error("An unexpected error occurred. Please refresh the page.");
-  };
 
   const root = createRoot(rootElement);
   root.render(<App />);

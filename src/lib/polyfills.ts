@@ -10,6 +10,9 @@ if (typeof window !== 'undefined') {
   (window as any).Buffer = Buffer;
   (window as any).process = process;
   (window as any).global = window;
+  
+  // Ensure critical dependencies are available
+  (window as any).process.env = (window as any).process.env || {};
 }
 
 // Set up stream and related utilities

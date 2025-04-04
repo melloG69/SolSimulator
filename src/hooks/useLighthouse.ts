@@ -12,22 +12,27 @@ export const useLighthouse = () => {
   // Check if Lighthouse is available on the current network
   useEffect(() => {
     const checkAvailability = async () => {
-      // Try to get cached status first
-      const cachedStatus = getLighthouseStatus();
-      
-      if (cachedStatus) {
-        setIsAvailable(cachedStatus.isAvailable);
+      try {
+        // Try to get cached status first
+        const cachedStatus = getLighthouseStatus();
         
-        // If cache is older than 1 hour, refresh in the background
-        const cacheTime = new Date(cachedStatus.timestamp).getTime();
-        const oneHour = 60 * 60 * 1000;
-        
-        if (Date.now() - cacheTime > oneHour) {
-          refreshAvailability();
+        if (cachedStatus) {
+          setIsAvailable(cachedStatus.isAvailable);
+          
+          // If cache is older than 1 hour, refresh in the background
+          const cacheTime = new Date(cachedStatus.timestamp).getTime();
+          const oneHour = 60 * 60 * 1000;
+          
+          if (Date.now() - cacheTime > oneHour) {
+            refreshAvailability();
+          }
+        } else {
+          // No cached status, check immediately
+          await refreshAvailability();
         }
-      } else {
-        // No cached status, check immediately
-        await refreshAvailability();
+      } catch (error) {
+        console.error("Error in useLighthouse hook:", error);
+        setIsAvailable(false);
       }
     };
     
