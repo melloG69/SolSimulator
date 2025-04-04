@@ -4,7 +4,6 @@ import { Transaction, PublicKey } from '@solana/web3.js';
 import { lighthouseService } from '@/services/lighthouseService';
 import { createLighthouseGuardrail, analyzeBundleSecurity } from '@/integrations/lighthouse';
 import { getLighthouseStatus, setLighthouseStatus } from '@/integrations/lighthouse/storage';
-import { connection } from '@/lib/solana';
 
 export const useLighthouse = () => {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
