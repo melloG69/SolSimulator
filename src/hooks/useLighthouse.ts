@@ -45,26 +45,38 @@ export const useLighthouse = () => {
   const refreshAvailability = async () => {
     try {
       setIsLoading(true);
-      // First try direct initialize method to ensure we've properly checked the program ID
-      const directCheck = await lighthouseService.initialize(connection);
       
-      if (directCheck) {
-        console.log("Lighthouse program found via direct check");
-        setIsAvailable(true);
-        setLighthouseStatus(true);
-        toast.success("Lighthouse protection active");
-        return;
+      // First try direct initialize method to ensure we've properly checked the program ID
+      try {
+        const directCheck = await lighthouseService.initialize(connection);
+        
+        if (directCheck) {
+          console.log("Lighthouse program found via direct check");
+          setIsAvailable(true);
+          setLighthouseStatus(true);
+          toast.success("Lighthouse protection active");
+          return;
+        }
+      } catch (error) {
+        console.error("Error in direct Lighthouse check:", error);
+        // Continue to fallback check
       }
       
       // Fallback to standard check
-      const result = await lighthouseService.checkProgramAvailability();
-      setIsAvailable(result.isProgramAvailable);
-      setLighthouseStatus(result.isProgramAvailable);
-      
-      if (result.isProgramAvailable) {
-        toast.success("Lighthouse protection active");
-      } else {
-        toast.warning("Lighthouse not available - limited security protections active");
+      try {
+        const result = await lighthouseService.checkProgramAvailability();
+        setIsAvailable(result.isProgramAvailable);
+        setLighthouseStatus(result.isProgramAvailable);
+        
+        if (result.isProgramAvailable) {
+          toast.success("Lighthouse protection active");
+        } else {
+          toast.warning("Lighthouse not available - limited security protections active");
+        }
+      } catch (error) {
+        console.error("Error in fallback Lighthouse check:", error);
+        setIsAvailable(false);
+        setLighthouseStatus(false);
       }
     } catch (error) {
       console.error("Error checking Lighthouse availability:", error);

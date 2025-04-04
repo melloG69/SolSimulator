@@ -80,37 +80,43 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
           }
           
           // Create a proper mock transaction with a valid instruction for testing
-          const mockTx = new Transaction();
-          const mockPayer = new PublicKey('11111111111111111111111111111111');
-          const mockReceiver = new PublicKey('11111111111111111111111111111111');
-          
-          // Add a valid instruction (0 SOL transfer just for validation)
-          mockTx.add(
-            SystemProgram.transfer({
-              fromPubkey: mockPayer,
-              toPubkey: mockReceiver,
-              lamports: 0
-            })
-          );
-          
-          // Set properties to avoid validation errors
-          mockTx.feePayer = mockPayer;
-          mockTx.recentBlockhash = "4NfTBsiUGv2FHXuXJgMsHNZWVQHLdKxL5mKiGJNPAkgq"; // Mock blockhash
-          
-          // Now check if Lighthouse is available
-          const lighthouseResult = await lighthouseService.buildAssertions(mockTx);
-          
-          setNetworkStatus(prev => ({ 
-            ...prev, 
-            lighthouse: lighthouseResult.isProgramAvailable || false
-          }));
-          
-          if (!lighthouseResult.isProgramAvailable) {
-            console.warn("Lighthouse program availability check on mainnet failed");
-            toast.warning("Lighthouse protection may be limited on mainnet. Transaction security could be affected.");
-          } else {
-            console.log("Lighthouse program verified on mainnet");
-            toast.success("Lighthouse protection active on mainnet");
+          try {
+            const mockTx = new Transaction();
+            // Use predefined public keys to avoid issues with key generation
+            const mockPayer = new PublicKey('11111111111111111111111111111111');
+            const mockReceiver = new PublicKey('11111111111111111111111111111111');
+            
+            // Add a valid instruction (0 SOL transfer just for validation)
+            mockTx.add(
+              SystemProgram.transfer({
+                fromPubkey: mockPayer,
+                toPubkey: mockReceiver,
+                lamports: 0
+              })
+            );
+            
+            // Set properties to avoid validation errors
+            mockTx.feePayer = mockPayer;
+            mockTx.recentBlockhash = "4NfTBsiUGv2FHXuXJgMsHNZWVQHLdKxL5mKiGJNPAkgq"; // Mock blockhash
+            
+            // Now check if Lighthouse is available
+            const lighthouseResult = await lighthouseService.buildAssertions(mockTx);
+            
+            setNetworkStatus(prev => ({ 
+              ...prev, 
+              lighthouse: lighthouseResult.isProgramAvailable || false
+            }));
+            
+            if (!lighthouseResult.isProgramAvailable) {
+              console.warn("Lighthouse program availability check on mainnet failed");
+              toast.warning("Lighthouse protection may be limited on mainnet. Transaction security could be affected.");
+            } else {
+              console.log("Lighthouse program verified on mainnet");
+              toast.success("Lighthouse protection active on mainnet");
+            }
+          } catch (error) {
+            console.error("Error in transaction creation for Lighthouse check:", error);
+            setNetworkStatus(prev => ({ ...prev, lighthouse: false }));
           }
         } catch (error) {
           setNetworkStatus(prev => ({ ...prev, lighthouse: false }));

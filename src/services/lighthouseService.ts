@@ -12,6 +12,7 @@ import { connection } from "@/lib/solana";
  */
 class LighthouseService {
   // Correct program ID for Lighthouse on mainnet
+  // Fixed the program ID format to ensure it's a valid Solana address
   private programId = new PublicKey('LTHGYUPcvj2fjjFWcHuQKhnSS3QYHCJYVRxT7URiBPAJ');
   
   /**
@@ -19,6 +20,12 @@ class LighthouseService {
    */
   async initialize(connection: Connection): Promise<boolean> {
     try {
+      // Validate the program ID format before checking
+      if (!PublicKey.isOnCurve(this.programId.toBuffer())) {
+        console.error("Invalid Lighthouse program ID format");
+        return false;
+      }
+      
       // Check if the program exists on-chain
       const accountInfo = await connection.getAccountInfo(this.programId);
       const isProgramAvailable = accountInfo !== null;
@@ -38,6 +45,12 @@ class LighthouseService {
     isProgramAvailable: boolean;
   }> {
     try {
+      // Validate the program ID format before checking
+      if (!PublicKey.isOnCurve(this.programId.toBuffer())) {
+        console.error("Invalid Lighthouse program ID format");
+        return { isProgramAvailable: false };
+      }
+      
       // Check if the program exists on-chain
       const accountInfo = await connection.getAccountInfo(this.programId);
       const isProgramAvailable = accountInfo !== null;
@@ -60,6 +73,15 @@ class LighthouseService {
     isProgramAvailable: boolean;
   }> {
     try {
+      // Validate the program ID format before checking
+      if (!PublicKey.isOnCurve(this.programId.toBuffer())) {
+        console.error("Invalid Lighthouse program ID format");
+        return {
+          success: false,
+          isProgramAvailable: false
+        };
+      }
+      
       // Check if the program exists on-chain first
       const accountInfo = await connection.getAccountInfo(this.programId);
       const isProgramAvailable = accountInfo !== null;
@@ -149,3 +171,4 @@ class LighthouseService {
 
 // Singleton instance
 export const lighthouseService = new LighthouseService();
+
