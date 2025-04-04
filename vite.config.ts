@@ -4,14 +4,10 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    hmr: {
-      overlay: true,
-    },
   },
   plugins: [
     react(),
@@ -36,9 +32,6 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     esbuildOptions: {
       target: 'esnext',
-      supported: {
-        bigint: true,
-      },
     },
     include: [
       'buffer',
@@ -55,23 +48,6 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: 'esnext',
-    rollupOptions: {
-      // Ensure external packages are correctly handled
-      output: {
-        manualChunks: {
-          vendor: [
-            '@solana/web3.js',
-            '@solana/wallet-adapter-react',
-            '@solana/wallet-adapter-wallets',
-          ],
-          ui: [
-            'react',
-            'react-dom',
-            'react-router-dom',
-          ],
-        },
-      },
-    },
     commonjsOptions: {
       include: [
         /node_modules/,
@@ -82,8 +58,6 @@ export default defineConfig(({ mode }) => ({
         /crypto-browserify/,
         /stream-browserify/,
       ],
-      transformMixedEsModules: true,
     },
-    sourcemap: true,
   },
 }));
