@@ -69,7 +69,7 @@ export const SolanaProviders: FC<SolanaProvidersProps> = ({ children }) => {
         // Check Lighthouse availability
         try {
           // Set lighthouse status to true for development/preview
-          setNetworkStatus(prev => ({ prev, lighthouse: true }));
+          setNetworkStatus(prev => ({ ...prev, lighthouse: true }));
           
           // No need to run actual Lighthouse check in development or preview
           console.log("Development mode: Setting Lighthouse as available");
