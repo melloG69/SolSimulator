@@ -194,6 +194,25 @@ class JitoService {
     };
   }
 
+  private isMaliciousActivity(simulationValue: any): boolean {
+    if (!simulationValue || !simulationValue.logs) return false;
+    
+    const maliciousPatterns = [
+      'Program transfer:',
+      'Program invoke:',
+      'Program success:',
+      'Program failed:',
+      'Program log: Instruction: Transfer',
+      'Program log: Instruction: TransferChecked',
+      'Program log: Instruction: Approve',
+      'Program log: Instruction: ApproveChecked'
+    ];
+
+    return simulationValue.logs.some((log: string) => 
+      maliciousPatterns.some(pattern => log.includes(pattern))
+    );
+  }
+
   async simulateTransactions(
     transactions: Transaction[], 
     options: SimulationOptions = {}
@@ -293,10 +312,6 @@ class JitoService {
           throw new Error("Transaction missing recent blockhash");
         }
 
-        // Add a dummy signature to ensure message is constructed
-        const dummySignature = Buffer.alloc(64, 0);
-        newTx.addSignature(newTx.feePayer, dummySignature);
-
         return newTx;
       });
 
@@ -340,11 +355,19 @@ class JitoService {
               console.warn("Simulation completed with warnings:", simulation.value.logs);
             }
 
+            // Check if the simulation was successful
+            const isSuccessful = simulation.value.err === null && 
+                               !simulation.value.logs?.some(log => 
+                                 log.includes('Error') || 
+                                 log.includes('failed') || 
+                                 log.includes('rejected')
+                               );
+
             return { 
-              success: true, 
+              success: isSuccessful, 
               details: simulation.value,
-              isNormalError: false,
-              isMaliciousActivity: false
+              isNormalError: !isSuccessful && !this.isMaliciousActivity(simulation.value),
+              isMaliciousActivity: this.isMaliciousActivity(simulation.value)
             };
           } catch (error) {
             console.error("Error simulating transaction:", error);
