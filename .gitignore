@@ -10,13 +10,17 @@
 /build
 /dist
 
-# Misc
-.DS_Store
+# Environment files
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
+
+# Misc
+.DS_Store
+*.pem
 
 # Logs
 npm-debug.log*
@@ -31,3 +35,8 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# API Keys and Secrets
+**/api-keys.json
+**/secrets.json
+**/config.json

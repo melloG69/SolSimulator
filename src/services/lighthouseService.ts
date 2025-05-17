@@ -277,14 +277,14 @@ class LighthouseService {
       }
 
       // Always simulate real transactions
-      try {
-        const simulation = await this.connection.simulateTransaction(transaction);
-        if (simulation.value.err) {
-          console.error("Transaction simulation failed:", simulation.value.err);
+        try {
+          const simulation = await this.connection.simulateTransaction(transaction);
+          if (simulation.value.err) {
+            console.error("Transaction simulation failed:", simulation.value.err);
           return false;
-        }
-      } catch (error) {
-        console.error("Error simulating transaction:", error);
+          }
+        } catch (error) {
+          console.error("Error simulating transaction:", error);
         return false;
       }
 
@@ -377,7 +377,7 @@ class LighthouseService {
           isProgramAvailable: true
         };
       }
-
+      
       // Check for malicious patterns in the transaction
       if (transaction.instructions && transaction.instructions.length > 0) {
         const maliciousCheck = await this.detectMaliciousPatterns(transaction);

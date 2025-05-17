@@ -2,6 +2,7 @@ import { Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgra
 import { connection } from "@/lib/solana";
 import { Buffer } from 'buffer';
 import { toast } from "sonner";
+import { env } from "@/config/env";
 
 interface JitoResponse {
   jsonrpc: "2.0";
@@ -99,6 +100,7 @@ class JitoService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${env.JITO_API_KEY}`
         },
         body: JSON.stringify({
           jsonrpc: "2.0",
@@ -312,6 +314,19 @@ class JitoService {
           throw new Error("Transaction missing recent blockhash");
         }
 
+        // Initialize the transaction message
+        newTx.signatures = [];
+        const message = newTx.compileMessage();
+        if (!message) {
+          throw new Error("Failed to compile transaction message");
+        }
+
+        // Add the fee payer's signature slot
+        newTx.signatures.push({
+          signature: null,
+          publicKey: newTx.feePayer
+        });
+
         return newTx;
       });
 
@@ -325,6 +340,21 @@ class JitoService {
             // Verify the transaction is properly signed
             if (!signedTx.signatures || signedTx.signatures.length === 0) {
               throw new Error("Transaction not properly signed");
+            }
+
+            // Ensure the transaction has a valid signature
+            const hasValidSignature = signedTx.signatures.some(sig => 
+              sig.publicKey.equals(signedTx.feePayer!) && sig.signature !== null
+            );
+
+            if (!hasValidSignature) {
+              throw new Error("Transaction missing valid signature from fee payer");
+            }
+
+            // Verify the transaction message is properly constructed
+            const message = signedTx.compileMessage();
+            if (!message) {
+              throw new Error("Failed to compile signed transaction message");
             }
 
             // Perform the actual simulation with strict validation

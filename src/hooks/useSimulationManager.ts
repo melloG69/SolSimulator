@@ -204,9 +204,9 @@ export const useSimulationManager = () => {
             description: "Transaction is missing fee payer",
             variant: "destructive",
           });
-          return {
+          return { 
             results: transactions.map(() => ({
-              success: false,
+            success: false, 
               message: "Transaction is missing fee payer"
             })),
             details: null
@@ -220,7 +220,7 @@ export const useSimulationManager = () => {
             description: "Transaction has no instructions",
             variant: "destructive",
           });
-          return {
+        return { 
             results: transactions.map(() => ({
               success: false,
               message: "Transaction has no instructions"
@@ -243,7 +243,7 @@ export const useSimulationManager = () => {
         toast({
           title: "Malicious Activity Detected",
           description: errorMessages,
-          variant: "destructive",
+          variant: "destructive", 
         });
         
         return {
@@ -319,9 +319,9 @@ export const useSimulationManager = () => {
       });
       
       return {
-        results: transactions.map(() => ({
-          success: false,
-          message: error instanceof Error ? error.message : "Unknown error occurred"
+        results: transactions.map(() => ({ 
+          success: false, 
+          message: error instanceof Error ? error.message : "Unknown error occurred" 
         })),
         details: null
       };
