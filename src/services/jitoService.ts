@@ -16,7 +16,6 @@ interface JitoResponse {
 
 interface SimulationOptions {
   skipLighthouseCheck?: boolean;
-  skipSanityChecks?: boolean;
 }
 
 class JitoService {
@@ -210,37 +209,116 @@ class JitoService {
     }
 
     try {
-      // Skip validation if skipSanityChecks is true (for demo/sample transactions)
-      if (!options.skipSanityChecks) {
-        const bundleValidation = this.validateBundleConstraints(transactions, false);
-        if (!bundleValidation.isValid) {
-          console.error("Bundle constraint validation failed:", bundleValidation.error);
-          return { 
-            isValid: false, 
-            error: bundleValidation.error,
+      // Always validate bundle constraints
+      const bundleValidation = this.validateBundleConstraints(transactions, false);
+      if (!bundleValidation.isValid) {
+        console.error("Bundle constraint validation failed:", bundleValidation.error);
+        return { 
+          isValid: false, 
+          error: bundleValidation.error,
+          normalErrors: true
+        };
+      }
+
+      // Validate each transaction before simulation
+      for (const tx of transactions) {
+        if (!(tx instanceof Transaction)) {
+          console.error("Invalid transaction object:", tx);
+          return {
+            isValid: false,
+            error: "Invalid transaction object passed to simulation",
             normalErrors: true
           };
         }
+        if (!tx.feePayer) {
+          console.error("Transaction missing fee payer:", tx);
+          return {
+            isValid: false,
+            error: "Transaction missing fee payer",
+            normalErrors: true
+          };
+        }
+        if (!tx.instructions || tx.instructions.length === 0) {
+          console.error("Transaction has no instructions:", tx);
+          return {
+            isValid: false,
+            error: "Transaction has no instructions",
+            normalErrors: true
+          };
+        }
+        // Update transaction with latest blockhash if needed
+        if (!tx.recentBlockhash) {
+          const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('finalized');
+          tx.recentBlockhash = blockhash;
+          tx.lastValidBlockHeight = lastValidBlockHeight;
+        }
+        // Log transaction fields for debugging
+        console.log("Simulating transaction:", {
+          feePayer: tx.feePayer?.toBase58(),
+          recentBlockhash: tx.recentBlockhash,
+          instructions: tx.instructions.length,
+          signatures: tx.signatures.length,
+          isTransaction: tx instanceof Transaction
+        });
       }
 
-      const simulationResults = await Promise.all(
-        transactions.map(async (tx) => {
-          if (!tx.recentBlockhash && !options.skipSanityChecks) {
-            return { 
-              success: false, 
-              error: "Transaction missing recentBlockhash",
-              isNormalError: true,
-              isMaliciousActivity: false
-            };
-          }
+      // Get the user's wallet (Phantom)
+      const provider = window?.solana;
+      if (!provider) {
+        throw new Error("Phantom wallet not found");
+      }
 
+      // Prepare all transactions for signing
+      const transactionsToSign = transactions.map(tx => {
+        // Ensure transaction is properly constructed
+        if (!tx.feePayer) {
+          throw new Error("Transaction missing fee payer");
+        }
+
+        // Create a new transaction with the same instructions
+        const newTx = new Transaction();
+        
+        // Set required fields
+        newTx.feePayer = tx.feePayer;
+        newTx.recentBlockhash = tx.recentBlockhash;
+        newTx.lastValidBlockHeight = tx.lastValidBlockHeight;
+        
+        // Add all instructions
+        tx.instructions.forEach(ix => {
+          newTx.add(ix);
+        });
+
+        // Ensure the transaction is properly constructed
+        if (!newTx.recentBlockhash) {
+          throw new Error("Transaction missing recent blockhash");
+        }
+
+        // Add a dummy signature to ensure message is constructed
+        const dummySignature = Buffer.alloc(64, 0);
+        newTx.addSignature(newTx.feePayer, dummySignature);
+
+        return newTx;
+      });
+
+      // Sign all transactions at once
+      const signedTransactions = await provider.signAllTransactions(transactionsToSign);
+
+      // Simulate each signed transaction
+      const simulationResults = await Promise.all(
+        signedTransactions.map(async (signedTx) => {
           try {
-            // For demo purposes with skipSanityChecks, don't actually simulate
-            if (options.skipSanityChecks) {
-              return { success: true, details: { value: { logs: ["Demo simulation successful"] } } };
+            // Verify the transaction is properly signed
+            if (!signedTx.signatures || signedTx.signatures.length === 0) {
+              throw new Error("Transaction not properly signed");
             }
-            
-            const simulation = await this.connection.simulateTransaction(tx);
+
+            // Perform the actual simulation with strict validation
+            const simulation = await this.connection.simulateTransaction(signedTx, {
+              sigVerify: true, // Enable signature verification
+              replaceRecentBlockhash: true,
+              commitment: 'confirmed'
+            });
+
             if (simulation.value.err) {
               const errorClassification = this.classifySimulationError(simulation.value.err);
               
@@ -252,19 +330,24 @@ class JitoService {
                 details: simulation.value 
               };
             }
-            return { success: true, details: simulation.value };
-          } catch (error) {
-            // If we're skipping sanity checks, treat all errors as normal
-            if (options.skipSanityChecks) {
-              return { 
-                success: options.skipSanityChecks, // Force success for demo
-                error: "Demo simulation",
-                isNormalError: true,
-                isMaliciousActivity: false,
-                details: { logs: ["Demo simulation"] }
-              };
+
+            // Check for any warnings in the simulation logs
+            const hasWarnings = simulation.value.logs?.some(log => 
+              log.includes('Warning') || log.includes('Error')
+            );
+
+            if (hasWarnings) {
+              console.warn("Simulation completed with warnings:", simulation.value.logs);
             }
-            
+
+            return { 
+              success: true, 
+              details: simulation.value,
+              isNormalError: false,
+              isMaliciousActivity: false
+            };
+          } catch (error) {
+            console.error("Error simulating transaction:", error);
             const errorClassification = this.classifySimulationError(error);
             
             return { 
@@ -277,12 +360,6 @@ class JitoService {
           }
         })
       );
-
-      // For demo purposes, if skipSanityChecks is true, always return valid
-      if (options.skipSanityChecks) {
-        console.log("Skipping sanity checks, assuming valid transaction for demo");
-        return { isValid: true, details: simulationResults };
-      }
 
       const maliciousActivity = simulationResults.some(result => 
         !result.success && result.isMaliciousActivity === true
@@ -323,11 +400,6 @@ class JitoService {
     } catch (error) {
       console.error("Error during transaction simulation:", error);
       const errorClassification = this.classifySimulationError(error);
-      
-      // If skipSanityChecks is true, return valid even with errors for demo purposes
-      if (options.skipSanityChecks) {
-        return { isValid: true };
-      }
       
       return { 
         isValid: false, 

@@ -1,4 +1,3 @@
-
 import { Transaction, ComputeBudgetProgram } from "@solana/web3.js";
 import { jitoService } from "@/services/jitoService";
 import { useToast } from "@/hooks/use-toast";
@@ -178,7 +177,7 @@ export const useSimulationManager = () => {
           timestamp: new Date().toISOString(),
           hasMaliciousTransactions: false,
           transactionErrors: {},
-          isExecutable: false // Add executable status flag
+          isExecutable: false
         };
         
         toast({
@@ -187,215 +186,144 @@ export const useSimulationManager = () => {
           variant: "destructive",
         });
         
-        // Show bundle executable status in a separate toast
-        toast({
-          title: "Bundle is Not Executable",
-          description: "The bundle exceeds maximum size and cannot be executed.",
-          variant: "destructive",
-        });
-        
         return {
           results: transactions.map(() => ({ 
             success: false, 
             message: `Bundle exceeds maximum size of ${MAX_JITO_TRANSACTIONS} transactions`
           })),
+          details: simulationDetails
+        };
+      }
+
+      // Validate each transaction before simulation
+      for (const tx of transactions) {
+        if (!tx.feePayer) {
+          setSimulationStatus('failed');
+          toast({
+            title: "Invalid Transaction",
+            description: "Transaction is missing fee payer",
+            variant: "destructive",
+          });
+          return {
+            results: transactions.map(() => ({
+              success: false,
+              message: "Transaction is missing fee payer"
+            })),
+            details: null
+          };
+        }
+
+        if (!tx.instructions || tx.instructions.length === 0) {
+          setSimulationStatus('failed');
+          toast({
+            title: "Invalid Transaction",
+            description: "Transaction has no instructions",
+            variant: "destructive",
+          });
+          return {
+            results: transactions.map(() => ({
+              success: false,
+              message: "Transaction has no instructions"
+            })),
+            details: null
+          };
+        }
+      }
+
+      // Synchronize transactions with latest blockhash
+      const synchronizedResults = await synchronizeTransactions(transactions);
+      
+      // Check for malicious transactions
+      const hasMaliciousTransactions = synchronizedResults.some(result => result.malicious);
+      if (hasMaliciousTransactions) {
+        setSimulationStatus('failed');
+        const maliciousResults = synchronizedResults.filter(result => result.malicious);
+        const errorMessages = maliciousResults.map(result => result.error).join('; ');
+        
+        toast({
+          title: "Malicious Activity Detected",
+          description: errorMessages,
+          variant: "destructive",
+        });
+        
+        return {
+          results: transactions.map(() => ({
+            success: false,
+            message: "Malicious activity detected in bundle"
+          })),
           details: {
-            ...simulationDetails,
-            error: `Bundle exceeds maximum transaction count (${MAX_JITO_TRANSACTIONS})`
+            hasMaliciousTransactions: true,
+            maliciousDetails: maliciousResults
           }
         };
       }
 
-      // Synchronize transactions with latest blockhash and check for malicious ones
-      const synchronizedResults = await synchronizeTransactions(transactions);
-      
-      // Track which transactions are malicious
-      const maliciousFlags = synchronizedResults.map(result => result.malicious);
-      const hasMaliciousTransactions = maliciousFlags.some(flag => flag === true);
-      
-      // Create a mapping of errors for each transaction
-      const transactionErrors = synchronizedResults.reduce((acc, result) => {
-        if (result.error) {
-          acc[result.index] = result.error;
-        }
-        return acc;
-      }, {} as Record<number, string>);
-      
-      // Prepare two sets of transactions:
-      // 1. All transactions for display purposes
-      // 2. Only valid transactions for simulation
-      
-      // Flatten transactions for simulation, ignoring malicious ones
-      const flattenedTransactions = synchronizedResults
-        .filter(result => !result.malicious)
-        .flatMap(result => result.transactions);
-      
-      // Prepare simulation results for each transaction based on its individual status
-      const simulationResults: SimulationResult[] = transactions.map((_, index) => {
-        // If this specific transaction was flagged as malicious, mark it as failed
-        if (maliciousFlags[index]) {
-          return { 
-            success: false, 
-            message: transactionErrors[index] || "Malicious transaction detected"
-          };
-        }
+      // Simulate the synchronized transactions
+      const simulationResult = await jitoService.simulateTransactions(
+        synchronizedResults.flatMap(result => result.transactions)
+      );
+
+      if (!simulationResult.isValid) {
+        setSimulationStatus('failed');
+        toast({
+          title: "Simulation Failed",
+          description: simulationResult.error || "Transaction simulation failed",
+          variant: "destructive",
+        });
         
-        // Otherwise, consider it valid for individual evaluation
-        return { 
-          success: true
+        return {
+          results: transactions.map(() => ({
+            success: false,
+            message: simulationResult.error || "Transaction simulation failed"
+          })),
+          details: simulationResult.details
         };
-      });
-      
-      // Calculate details for logging/UI
+      }
+
+      // Calculate simulation details
       const computeUnits = calculateComputeUnits(transactions);
       const estimatedFees = estimateTransactionFees(transactions);
-      const hasLighthouseProtection = flattenedTransactions.length > 
-        synchronizedResults.filter(r => !r.malicious).length;
-        
-      // Determine if the bundle is executable
-      let isExecutable = !hasMaliciousTransactions;
       
       const simulationDetails = {
         bundleSize: transactions.length,
-        withProtection: hasLighthouseProtection,
+        withProtection: true,
         computeUnits,
         estimatedFees: estimatedFees.toFixed(6),
         timestamp: new Date().toISOString(),
-        hasMaliciousTransactions,
-        transactionErrors,
-        isExecutable // Add executable status flag
+        hasMaliciousTransactions: false,
+        transactionErrors: {},
+        isExecutable: true
       };
-      
-      if (hasMaliciousTransactions) {
-        console.log('Bundle contains malicious transactions:', transactionErrors);
-        
-        // If some transactions are malicious, we'll still simulate the valid ones
-        // but mark the overall bundle as failed
-        if (flattenedTransactions.length > 0) {
-          // Run simulation on just the valid transactions
-          const validSimulationResult = await jitoService.simulateTransactions(
-            flattenedTransactions, 
-            { skipSanityChecks: true }
-          );
-          
-          // Update the simulation results for valid transactions
-          synchronizedResults.forEach((result, idx) => {
-            if (!result.malicious) {
-              simulationResults[result.index].success = true;
-            }
-          });
-        }
-        
-        setSimulationStatus('failed');
-        
-        toast({
-          title: "Simulation Detected Issues",
-          description: "Some transactions in this bundle would be rejected by Lighthouse",
-          variant: "destructive",
-        });
-        
-        // Show bundle executable status in a separate toast
-        toast({
-          title: "Bundle is Not Executable",
-          description: "One or more transactions in this bundle have failed simulation.",
-          variant: "destructive", 
-        });
-        
-        return {
-          results: simulationResults,
-          details: {
-            ...simulationDetails,
-            error: "Bundle contains malicious transactions"
-          }
-        };
-      }
-      
-      // If we reach here, there are no malicious transactions in the bundle
-      // Run the full bundle simulation
-      console.log('Simulating full bundle with valid transactions:', flattenedTransactions.length);
-      const simulationResult = await jitoService.simulateTransactions(flattenedTransactions, {skipSanityChecks: true});
-      
-      // Update executable status based on simulation results
-      isExecutable = simulationResult.isValid || simulationResult.normalErrors;
-      
-      // Add simulation result error details to the simulation details
-      const updatedSimulationDetails = {
-        ...simulationDetails,
-        error: simulationResult.error || null,
-        normalErrors: simulationResult.normalErrors || false,
-        isExecutable
-      };
-      
-      // If simulation was successful, show success message
-      if (simulationResult.isValid || simulationResult.normalErrors) {
-        setSimulationStatus('success');
-        
-        toast({
-          title: "Simulation Successful",
-          description: "Bundle has been successfully simulated",
-        });
-        
-        // Show bundle executable status in a separate toast
-        toast({
-          title: "Bundle is Executable",
-          description: "All transactions in this bundle have passed simulation.",
-        });
 
-        return {
-          results: simulationResults,
-          details: updatedSimulationDetails
-        };
-      } else {
-        // This is actual malicious activity or other issues - show the error
-        console.error('Simulation detected issues:', simulationResult.error);
-        setSimulationStatus('failed');
-        
-        toast({
-          title: "Simulation Failed",
-          description: simulationResult.error || "Issues detected in the bundle",
-          variant: "destructive",
-        });
-        
-        // Show bundle executable status in a separate toast
-        toast({
-          title: "Bundle is Not Executable", 
-          description: "The bundle simulation has failed and cannot be executed.",
-          variant: "destructive",
-        });
-        
-        // Update all transaction results to failed
-        simulationResults.forEach(result => {
-          result.success = false;
-          result.message = simulationResult.error || "Simulation failed";
-        });
-        
-        return {
-          results: simulationResults,
-          details: updatedSimulationDetails
-        };
-      }
-    } catch (error) {
-      console.error("Simulation error:", error);
-      setSimulationStatus('failed');
+      setSimulationStatus('success');
       toast({
-        title: "Simulation Failed",
+        title: "Simulation Successful",
+        description: "Bundle is valid and ready for execution",
+      });
+      
+      return {
+        results: transactions.map(() => ({
+          success: true,
+          message: "Transaction simulated successfully"
+        })),
+        details: simulationDetails
+      };
+    } catch (error) {
+      console.error("Error simulating bundle:", error);
+      setSimulationStatus('failed');
+      
+      toast({
+        title: "Simulation Error",
         description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
       
-      // Show bundle executable status in a separate toast
-      toast({
-        title: "Bundle is Not Executable",
-        description: "An error occurred during simulation.",
-        variant: "destructive",
-      });
-      
       return {
-        results: transactions.map(() => ({ 
-          success: false, 
-          message: error instanceof Error ? error.message : "Unknown error occurred" 
+        results: transactions.map(() => ({
+          success: false,
+          message: error instanceof Error ? error.message : "Unknown error occurred"
         })),
-        details: { isExecutable: false }
+        details: null
       };
     } finally {
       setLoading(false);
